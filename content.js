@@ -1,14 +1,11 @@
 /**
- * Bilibili合集增强
+ * Bilibili-Boost
  *
  * @author IgniteRan
- * @license CC BY-NC 4.0
- * @description 增强 Bilibili 视频合集页面，支持展开标题和列表
+ * @license MIT
+ * @description Bilibili-Boost：增强 Bilibili 视频页面，支持展开标题和列表
  *
- * 版权所有 (c) 2024 IgniteRan
- * 本项目采用 CC BY-NC 4.0 许可协议
- * 允许个人学习、研究、二次开发，但禁止商业使用
- * 使用时请保留原作者署名
+ * Copyright (c) 2024 IgniteRan
  */
 
 // ========== 配置区域 - 可根据 B站 页面结构变化修改 ==========
@@ -41,11 +38,11 @@ function init() {
     // 如果找到播放列表且按钮未创建
     if (playlistContainer && !document.querySelector('.title-expander-btn')) {
       clearInterval(checkPlaylist);
-      console.log('[Bilibili合集增强] 找到播放列表，创建按钮');
+      console.log('[Bilibili-Boost] 找到播放列表，创建按钮');
       createToggleButton(playlistContainer);
     } else if (attempts >= maxAttempts) {
       clearInterval(checkPlaylist);
-      console.warn('[Bilibili合集增强] 未找到播放列表');
+      console.warn('[Bilibili-Boost] 未找到播放列表');
     }
   }, 500);
 }
@@ -54,7 +51,7 @@ function init() {
 function createToggleButton(containerElement) {
   // 避免重复创建
   if (document.querySelector('.title-expander-btn')) {
-    console.log('[Bilibili合集增强] 按钮已存在，跳过创建');
+    console.log('[Bilibili-Boost] 按钮已存在，跳过创建');
     return;
   }
 
@@ -78,7 +75,7 @@ function createToggleButton(containerElement) {
   // 使用 setTimeout 延迟插入，确保 B站 的初始化完成
   setTimeout(() => {
     containerElement.appendChild(buttonWrapper);
-    console.log('[Bilibili合集增强] 按钮已创建并插入');
+    console.log('[Bilibili-Boost] 按钮已创建并插入');
   }, 1000);
 }
 
@@ -87,7 +84,7 @@ function toggleTitles() {
   // 查找视频列表项中的标题
   const videoItems = document.querySelectorAll('.video-pod__item');
   
-  console.log(`[Bilibili合集增强] 找到 ${videoItems.length} 个视频项`);
+  console.log(`[Bilibili-Boost] 找到 ${videoItems.length} 个视频项`);
   
   if (videoItems.length === 0) {
     alert('未找到视频列表，请刷新页面重试');
@@ -138,7 +135,7 @@ function toggleTitles() {
 
   // 更新按钮文本
   toggleButton.textContent = isExpanded ? '折叠标题' : '展开标题';
-  console.log(`[Bilibili合集增强] 已${isExpanded ? '展开' : '折叠'}标题`);
+  console.log(`[Bilibili-Boost] 已${isExpanded ? '展开' : '折叠'}标题`);
 }
 
 // 切换列表展开/折叠状态
@@ -163,7 +160,7 @@ function toggleList() {
   }
 
   listToggleButton.textContent = isListExpanded ? '折叠列表' : '展开列表';
-  console.log(`[Bilibili合集增强] 已${isListExpanded ? '展开' : '折叠'}列表`);
+  console.log(`[Bilibili-Boost] 已${isListExpanded ? '展开' : '折叠'}列表`);
 }
 
 // 页面加载完成后初始化
