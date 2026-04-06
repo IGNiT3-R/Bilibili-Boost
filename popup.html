@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Bilibili-Boost</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup">
+      <section class="popup__hero">
+        <p class="popup__eyebrow">Bilibili-Boost</p>
+        <h1 class="popup__title">控制面板</h1>
+        <p class="popup__subtitle">管理插件功能开关，并查看当前视频的已看状态。</p>
+      </section>
+
+      <section class="popup__section">
+        <div class="section__header">
+          <h2>功能开关</h2>
+          <p>关闭功能时仅停止生效，不会删除已有数据。</p>
+        </div>
+
+        <label class="toggle-card" for="watch-marker-toggle">
+          <div class="toggle-card__text">
+            <span class="toggle-card__title">标记看过</span>
+            <span class="toggle-card__desc">自动记录观看进度，并在页面上显示状态。</span>
+          </div>
+          <span class="toggle-card__control">
+            <input
+              id="watch-marker-toggle"
+              type="checkbox"
+            />
+            <span class="toggle-card__switch"></span>
+          </span>
+        </label>
+
+        <label class="toggle-card" for="collection-boost-toggle">
+          <div class="toggle-card__text">
+            <span class="toggle-card__title">合集增强</span>
+            <span class="toggle-card__desc">在视频页右侧列表中提供展开标题与展开列表能力。</span>
+          </div>
+          <span class="toggle-card__control">
+            <input
+              id="collection-boost-toggle"
+              type="checkbox"
+            />
+            <span class="toggle-card__switch"></span>
+          </span>
+        </label>
+      </section>
+
+      <section class="popup__section popup__section--current">
+        <div class="section__header">
+          <h2>当前视频</h2>
+          <p id="current-video-tip">正在读取当前页面信息...</p>
+        </div>
+
+        <div
+          id="current-video-card"
+          class="video-card video-card--hidden"
+        >
+          <div class="video-card__meta">
+            <p
+              id="current-video-title"
+              class="video-card__title"
+            ></p>
+            <p
+              id="current-video-bvid"
+              class="video-card__bvid"
+            ></p>
+          </div>
+
+          <div class="video-card__status-row">
+            <span
+              id="current-video-status"
+              class="status-badge"
+            >未记录</span>
+          </div>
+
+          <div class="video-card__actions">
+            <button
+              id="mark-complete-button"
+              class="action-button"
+              type="button"
+            >
+              标记已看完
+            </button>
+            <button
+              id="clear-record-button"
+              class="action-button action-button--secondary"
+              type="button"
+            >
+              清除记录
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

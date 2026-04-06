@@ -1,12 +1,20 @@
 {
   "manifest_version": 3,
   "name": "Bilibili-Boost",
-  "version": "1.0.0",
-  "description": "Bilibili-Boost：增强 Bilibili 视频页面，支持展开标题和列表，提升浏览体验",
-  "permissions": [],
+  "version": "1.2.0",
+  "description": "Bilibili-Boost：增强 Bilibili 浏览体验，支持标记看过与播放列表增强",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["*://*.bilibili.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Bilibili-Boost",
+    "default_popup": "popup.html"
+  },
   "content_scripts": [
     {
-      "matches": ["*://*.bilibili.com/video/*"],
+      "matches": ["*://*.bilibili.com/*"],
       "js": ["content.js"],
       "css": ["styles.css"],
       "run_at": "document_end"

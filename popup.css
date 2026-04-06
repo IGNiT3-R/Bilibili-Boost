@@ -1,0 +1,248 @@
+/**
+ * Bilibili-Boost - 控制面板样式
+ *
+ * @author IgniteRan
+ * @license MIT
+ * Copyright (c) 2024 IgniteRan
+ */
+
+:root {
+  color-scheme: light;
+  --popup-bg: linear-gradient(180deg, #f8fbff 0%, #eef5fb 100%);
+  --surface: rgba(255, 255, 255, 0.9);
+  --surface-border: rgba(34, 87, 122, 0.08);
+  --surface-shadow: 0 14px 30px rgba(31, 83, 118, 0.12);
+  --text-main: #19344a;
+  --text-subtle: #5f7891;
+  --accent: #00a1d6;
+  --accent-strong: #0088b5;
+  --accent-soft: rgba(0, 161, 214, 0.12);
+  --success: #18a56f;
+  --success-soft: rgba(24, 165, 111, 0.12);
+  --danger: #c25656;
+  --danger-soft: rgba(194, 86, 86, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 360px;
+  background: var(--popup-bg);
+  color: var(--text-main);
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.popup {
+  padding: 18px;
+}
+
+.popup__hero {
+  padding: 18px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(0, 161, 214, 0.14), transparent 36%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 255, 0.96));
+  box-shadow: var(--surface-shadow);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+}
+
+.popup__eyebrow {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.popup__title {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.popup__subtitle {
+  margin: 10px 0 0;
+  color: var(--text-subtle);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.popup__section {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--surface-shadow);
+}
+
+.section__header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.section__header p {
+  margin: 6px 0 0;
+  color: var(--text-subtle);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.toggle-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(244, 249, 255, 0.95);
+  border: 1px solid rgba(0, 161, 214, 0.08);
+  cursor: pointer;
+}
+
+.toggle-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toggle-card__title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.toggle-card__desc {
+  color: var(--text-subtle);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.toggle-card__control {
+  position: relative;
+  display: inline-flex;
+}
+
+.toggle-card__control input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.toggle-card__switch {
+  position: relative;
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(137, 157, 173, 0.4);
+  transition: background 0.25s ease;
+}
+
+.toggle-card__switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 4px 8px rgba(26, 52, 74, 0.2);
+  transition: transform 0.25s ease;
+}
+
+.toggle-card__control input:checked + .toggle-card__switch {
+  background: linear-gradient(135deg, #00a1d6, #23c0e8);
+}
+
+.toggle-card__control input:checked + .toggle-card__switch::after {
+  transform: translateX(18px);
+}
+
+.video-card {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(241, 248, 255, 0.95), rgba(255, 255, 255, 0.98));
+  border: 1px solid rgba(0, 161, 214, 0.08);
+}
+
+.video-card--hidden {
+  display: none;
+}
+
+.video-card__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.video-card__bvid {
+  margin: 6px 0 0;
+  color: var(--text-subtle);
+  font-size: 12px;
+}
+
+.video-card__status-row {
+  margin-top: 14px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(95, 120, 145, 0.12);
+  color: var(--text-subtle);
+}
+
+.status-badge[data-status="progress"] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.status-badge[data-status="complete"] {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.video-card__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.action-button {
+  flex: 1;
+  min-height: 38px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #00a1d6, #23c0e8);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 10px 20px rgba(0, 161, 214, 0.18);
+}
+
+.action-button:hover {
+  transform: translateY(-1px);
+}
+
+.action-button--secondary {
+  background: linear-gradient(135deg, #ffffff, #eef3f7);
+  color: var(--danger);
+  border: 1px solid rgba(194, 86, 86, 0.18);
+  box-shadow: none;
+}

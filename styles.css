@@ -6,24 +6,33 @@
  * Copyright (c) 2024 IgniteRan
  */
 
-/* 切换按钮样式 */
+.bb-collection-controls {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  width: 100%;
+  margin-top: 12px;
+  padding: 0;
+  gap: 12px;
+}
+
 .title-expander-btn {
+  display: inline-block;
+  min-width: 120px;
   padding: 6px 34px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #fff;
-  background: linear-gradient(135deg, #00a1d6 0%, #00b5e5 100%);
   border: none;
   border-radius: 4px;
+  background: linear-gradient(135deg, #00a1d6 0%, #00b5e5 100%);
+  box-shadow: 0 2px 6px rgba(0, 161, 214, 0.25);
+  color: #fff;
   cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  text-align: center;
   transition: all 0.3s ease;
   user-select: none;
-  display: inline-block;
-  text-align: center;
-  line-height: 20px;
   white-space: nowrap;
-  box-shadow: 0 2px 6px rgba(0, 161, 214, 0.25);
-  min-width: 120px;
 }
 
 .title-expander-btn:hover {
@@ -38,10 +47,227 @@
   transform: translateY(0);
 }
 
-/* 展开状态下的视频项样式 - 增强边界感 */
+.title-expander-btn:disabled {
+  cursor: default;
+  filter: grayscale(0.2);
+  opacity: 0.7;
+  transform: none;
+}
+
 .video-pod__item.title-expanded {
-  border-bottom: 1px solid #e3e5e7 !important;
-  padding-bottom: 8px !important;
   margin-bottom: 8px !important;
+  padding-bottom: 8px !important;
+  border-bottom: 1px solid #e3e5e7 !important;
   background-color: #fafafa !important;
+}
+
+.bb-watch-panel {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  max-width: 100%;
+  margin-left: auto;
+  float: right;
+  vertical-align: middle;
+}
+
+.bb-watch-panel__status,
+.bb-watch-panel__button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+  height: 32px;
+  padding: 6px 18px;
+  border: none;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #00a1d6 0%, #00b5e5 100%);
+  box-shadow: 0 2px 6px rgba(0, 161, 214, 0.25);
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  text-align: center;
+  transition: all 0.3s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.bb-watch-panel__status {
+  cursor: default;
+}
+
+.bb-watch-panel__status[data-status="progress"] {
+  background: linear-gradient(135deg, #00a1d6 0%, #00b5e5 100%);
+  color: #fff;
+}
+
+.bb-watch-panel__status[data-status="complete"] {
+  background: linear-gradient(135deg, #00a1d6 0%, #00b5e5 100%);
+  color: #fff;
+}
+
+.bb-watch-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bb-watch-panel__status:hover,
+.bb-watch-panel__button:hover {
+  background: linear-gradient(135deg, #00b5e5 0%, #00c9ff 100%);
+  box-shadow: 0 3px 8px rgba(0, 161, 214, 0.35);
+  transform: translateY(-1px);
+}
+
+.bb-watch-panel__status:hover {
+  transform: none;
+}
+
+.bb-watch-panel__status:active,
+.bb-watch-panel__button:active {
+  background: linear-gradient(135deg, #0090c0 0%, #00a1d6 100%);
+  box-shadow: 0 1px 3px rgba(0, 161, 214, 0.25);
+  transform: translateY(0);
+}
+
+.bb-watch-panel__status:active {
+  transform: none;
+}
+
+.bb-watch-panel__button:disabled {
+  cursor: default;
+  filter: grayscale(0.2);
+  opacity: 0.7;
+  transform: none;
+}
+
+.bb-watch-panel__button--ghost {
+  border: 1px solid rgba(0, 161, 214, 0.2);
+  background: linear-gradient(135deg, #ffffff 0%, #f7fbfd 100%);
+  box-shadow: none;
+  color: #00a1d6;
+}
+
+.bb-watch-panel__button--ghost:hover {
+  background: linear-gradient(135deg, #f5fbff 0%, #edf9ff 100%);
+  box-shadow: 0 2px 6px rgba(0, 161, 214, 0.16);
+  color: #00a1d6;
+}
+
+.bb-watch-panel__button--ghost:active {
+  background: linear-gradient(135deg, #edf7fb 0%, #e4f4fb 100%);
+  box-shadow: 0 1px 3px rgba(0, 161, 214, 0.12);
+  color: #0090c0;
+}
+
+.bb-watch-card-row {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bb-watch-card-row--generated {
+  width: 100%;
+}
+
+.bb-watch-card-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  position: relative;
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid #d7dce3;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+  box-shadow: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.bb-watch-card-toggle::after {
+  content: '';
+  width: 3px;
+  height: 7px;
+  border-right: 1.5px solid #fff;
+  border-bottom: 1.5px solid #fff;
+  opacity: 0;
+  transform: translateY(-1px) rotate(45deg) scale(0.85);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.bb-watch-card-toggle:hover {
+  border-color: #00a1d6;
+  background: linear-gradient(180deg, #f8fdff 0%, #eefaff 100%);
+  box-shadow: 0 1px 4px rgba(0, 161, 214, 0.12);
+}
+
+.bb-watch-card-toggle:active {
+  transform: scale(0.96);
+}
+
+.bb-watch-card-toggle[data-status="complete"] {
+  border-color: #00a1d6;
+  background: linear-gradient(135deg, #00a1d6 0%, #00b5e5 100%);
+  box-shadow: 0 2px 6px rgba(0, 161, 214, 0.2);
+}
+
+.bb-watch-card-toggle[data-status="complete"]::after {
+  opacity: 1;
+  transform: translateY(-1px) rotate(45deg) scale(1);
+}
+
+.bb-watch-card-toggle[data-status="complete"]:hover {
+  border-color: #00b5e5;
+  background: linear-gradient(135deg, #00b5e5 0%, #00c9ff 100%);
+}
+
+.bb-watch-card-toggle:disabled {
+  cursor: default;
+  opacity: 0.7;
+  transform: none;
+}
+
+.bb-watch-badge-host {
+  position: relative !important;
+}
+
+.bb-watch-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  max-width: 96px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  background: rgba(16, 33, 47, 0.82);
+  box-shadow: 0 5px 12px rgba(16, 33, 47, 0.18);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.bb-watch-badge[data-status="progress"] {
+  background: rgba(0, 161, 214, 0.88);
+}
+
+.bb-watch-badge[data-status="complete"] {
+  background: rgba(24, 165, 111, 0.9);
 }
