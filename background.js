@@ -6,6 +6,8 @@
  * Copyright (c) 2024 IgniteRan
  */
 
+const extensionApi = globalThis.browser || globalThis.chrome;
+
 const DB_NAME = 'bilibili_boost';
 const DB_VERSION = 1;
 const WATCH_STORE_NAME = 'watch_history';
@@ -125,14 +127,14 @@ async function withStore(mode, handler) {
 }
 
 async function ensureSettings() {
-  const data = await chrome.storage.local.get(SETTINGS_KEY);
+  const data = await extensionApi.storage.local.get(SETTINGS_KEY);
   const currentSettings = {
     ...DEFAULT_SETTINGS,
     ...(data[SETTINGS_KEY] || {})
   };
 
   if (!data[SETTINGS_KEY]) {
-    await chrome.storage.local.set({
+    await extensionApi.storage.local.set({
       [SETTINGS_KEY]: currentSettings
     });
   }
@@ -151,7 +153,7 @@ async function updateSettings(patch) {
     ...patch
   };
 
-  await chrome.storage.local.set({
+  await extensionApi.storage.local.set({
     [SETTINGS_KEY]: nextSettings
   });
 
@@ -349,7 +351,7 @@ async function clearWatchRecord(bvid) {
 
 async function broadcastToBilibiliTabs(message) {
   try {
-    const tabs = await chrome.tabs.query({
+    const tabs = await extensionApi.tabs.query({
       url: ['*://*.bilibili.com/*']
     });
 
@@ -360,7 +362,7 @@ async function broadcastToBilibiliTabs(message) {
         }
 
         try {
-          await chrome.tabs.sendMessage(tab.id, message);
+          await extensionApi.tabs.sendMessage(tab.id, message);
         } catch (error) {
           // 页面未注入内容脚本时会抛错，这里直接忽略即可。
         }
@@ -453,7 +455,7 @@ function sanitizeImportedWatchRecord(rawRecord) {
 async function exportWatchRecords() {
   return {
     app: 'Bilibili-Boost',
-    version: chrome.runtime.getManifest().version,
+    version: extensionApi.runtime.getManifest().version,
     schemaVersion: EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     watchRecords: await getAllWatchRecords()
@@ -517,11 +519,11 @@ async function importWatchRecords(payload) {
   };
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+extensionApi.runtime.onInstalled.addListener(() => {
   void ensureSettings();
 });
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message.type !== 'string') {
     return false;
   }

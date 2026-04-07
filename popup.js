@@ -6,6 +6,8 @@
  * Copyright (c) 2024 IgniteRan
  */
 
+const extensionApi = globalThis.browser || globalThis.chrome;
+
 const MESSAGE_TYPES = {
   GET_SETTINGS: 'GET_SETTINGS',
   UPDATE_SETTINGS: 'UPDATE_SETTINGS',
@@ -89,7 +91,7 @@ function isCompletedRecord(record) {
 }
 
 async function sendMessage(type, payload) {
-  const response = await chrome.runtime.sendMessage({
+  const response = await extensionApi.runtime.sendMessage({
     type,
     payload
   });
@@ -102,7 +104,7 @@ async function sendMessage(type, payload) {
 }
 
 async function getCurrentTab() {
-  const tabs = await chrome.tabs.query({
+  const tabs = await extensionApi.tabs.query({
     active: true,
     currentWindow: true
   });

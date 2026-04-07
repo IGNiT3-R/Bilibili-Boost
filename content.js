@@ -8,6 +8,8 @@
  * Copyright (c) 2024 IgniteRan
  */
 
+const extensionApi = globalThis.browser || globalThis.chrome;
+
 const MESSAGE_TYPES = {
   GET_SETTINGS: 'GET_SETTINGS',
   GET_WATCH_RECORD: 'GET_WATCH_RECORD',
@@ -171,7 +173,7 @@ function isCompletedRecord(record) {
 }
 
 async function sendMessage(type, payload) {
-  const response = await chrome.runtime.sendMessage({
+  const response = await extensionApi.runtime.sendMessage({
     type,
     payload
   });
@@ -1271,7 +1273,7 @@ function startRouteWatcher() {
 }
 
 function registerRuntimeListeners() {
-  chrome.runtime.onMessage.addListener((message) => {
+  extensionApi.runtime.onMessage.addListener((message) => {
     if (!message || typeof message.type !== 'string') {
       return false;
     }
@@ -1297,7 +1299,7 @@ function registerRuntimeListeners() {
     return false;
   });
 
-  chrome.storage.onChanged.addListener((changes, areaName) => {
+  extensionApi.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local' || !changes[SETTINGS_KEY]) {
       return;
     }
