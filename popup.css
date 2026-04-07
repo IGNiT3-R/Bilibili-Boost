@@ -49,6 +49,24 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.75);
 }
 
+.popup__hero-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.popup__hero-icon {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  border-radius: 14px;
+  box-shadow: 0 12px 24px rgba(0, 118, 176, 0.2);
+}
+
+.popup__hero-copy {
+  min-width: 0;
+}
+
 .popup__eyebrow {
   margin: 0 0 8px;
   color: var(--accent);
@@ -65,7 +83,7 @@ body {
 }
 
 .popup__subtitle {
-  margin: 10px 0 0;
+  margin: 14px 0 0;
   color: var(--text-subtle);
   font-size: 13px;
   line-height: 1.6;
