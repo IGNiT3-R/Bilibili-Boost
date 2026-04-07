@@ -97,7 +97,7 @@ Bilibili-Boost 是一个用于提升 Bilibili 浏览与观看体验的轻量 Chr
 
 | UP 主个人空间页 | 历史记录页 | 视频播放页 |
 |-------|-------|-------|
-| 待补充截图 | 待补充截图 | 待补充截图 |
+|<img width="1847" height="721" alt="个人空间页" src="https://github.com/user-attachments/assets/eedbc2ac-1b81-43b8-bfb8-3044ac6b2918" />|<img width="1895" height="523" alt="历史记录页" src="https://github.com/user-attachments/assets/c1e97d23-5351-4a2b-a834-4be2570482f7" />|<img width="1513" height="1122" alt="视频播放页" src="https://github.com/user-attachments/assets/d23ee313-9eed-4538-8af7-15713518329b" />|
 
 ### 合集增强
 
