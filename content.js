@@ -41,6 +41,8 @@ const CARD_HOST_SELECTOR = '.upload-video-card, upload-video-card, .bili-video-c
 const CARD_META_ROW_SELECTOR = '.bili-video-card__info--bottom, .bili-video-card__stats, .video-card__stats, .meta, .bili-video-card__subtitle, [class*="video-card__stats"], [class*="info--bottom"], [class*="info-bottom"], [class*="video-meta"], [class*="subtitle"]';
 const CARD_META_TEXT_SELECTOR = '.time, [class*="date"], [class*="pubdate"], [class*="publish"], [class*="time"], [class*="subtitle"]';
 const CARD_TITLE_SELECTOR = '.bili-video-card__info--tit, .bili-video-card__title, .title, [class*="title"], [class*="tit"]';
+const CARD_COVER_SELECTOR = '.bili-video-card__image, .bili-video-card__cover, .video-card__cover, .recommend-video-card__cover, .bili-cover-card__image, .vui_video_card__cover, .cover, .pic, .image, [class*="cover"], [class*="image"], [class*="thumb"], [class*="thumbnail"]';
+const CARD_COVER_MEDIA_SELECTOR = 'img, picture, video, canvas, source';
 
 const WATCH_PANEL_ID = 'bb-watch-panel';
 const COLLECTION_CONTROLS_CLASS = 'bb-collection-controls';
@@ -803,11 +805,82 @@ function handleVisibilityChange() {
 }
 
 function resolveBadgeHost(anchorElement) {
+  const cardHostElement = anchorElement.closest(CARD_HOST_SELECTOR) || anchorElement.closest(CARD_CONTAINER_SELECTOR);
+
+  if (cardHostElement) {
+    const coverLink = Array.from(cardHostElement.querySelectorAll(VIDEO_LINK_SELECTOR)).find((linkElement) => {
+      if (!(linkElement instanceof HTMLElement)) {
+        return false;
+      }
+
+      return (
+        linkElement.matches(CARD_COVER_SELECTOR) ||
+        Boolean(linkElement.querySelector(CARD_COVER_MEDIA_SELECTOR)) ||
+        Boolean(linkElement.querySelector(CARD_COVER_SELECTOR))
+      );
+    });
+
+    const directCoverHost = findBadgeCoverHost(coverLink || cardHostElement, cardHostElement);
+
+    if (directCoverHost) {
+      return directCoverHost;
+    }
+  }
+
   return anchorElement.closest(CARD_CONTAINER_SELECTOR) || anchorElement;
 }
 
 function resolveCardHost(anchorElement) {
-  return anchorElement.closest(CARD_HOST_SELECTOR) || resolveBadgeHost(anchorElement);
+  return anchorElement.closest(CARD_HOST_SELECTOR) || anchorElement.closest(CARD_CONTAINER_SELECTOR) || anchorElement;
+}
+
+function findBadgeCoverHost(rootElement, cardHostElement) {
+  if (!(rootElement instanceof HTMLElement)) {
+    return null;
+  }
+
+  if (isValidBadgeHost(rootElement, cardHostElement)) {
+    return rootElement;
+  }
+
+  const candidateElements = Array.from(rootElement.querySelectorAll(CARD_COVER_SELECTOR));
+
+  for (const candidateElement of candidateElements) {
+    if (isValidBadgeHost(candidateElement, cardHostElement)) {
+      return candidateElement;
+    }
+  }
+
+  const mediaElement = rootElement.querySelector(CARD_COVER_MEDIA_SELECTOR);
+
+  if (mediaElement && mediaElement.parentElement instanceof HTMLElement && isValidBadgeHost(mediaElement.parentElement, cardHostElement)) {
+    return mediaElement.parentElement;
+  }
+
+  return null;
+}
+
+function isValidBadgeHost(candidateElement, cardHostElement) {
+  if (!(candidateElement instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (cardHostElement && !cardHostElement.contains(candidateElement)) {
+    return false;
+  }
+
+  const classText = typeof candidateElement.className === 'string'
+    ? candidateElement.className.toLowerCase()
+    : '';
+  const hasCoverHint = /(cover|image|pic|thumb|thumbnail)/.test(classText);
+  const hasMedia = candidateElement.matches(CARD_COVER_MEDIA_SELECTOR) || Boolean(candidateElement.querySelector(CARD_COVER_MEDIA_SELECTOR));
+  const containsTitle = candidateElement !== cardHostElement && Boolean(candidateElement.querySelector(CARD_TITLE_SELECTOR));
+
+  if (containsTitle) {
+    return false;
+  }
+
+  return hasCoverHint || hasMedia;
 }
 
 function collectWatchCardTargets() {
@@ -822,8 +895,8 @@ function collectWatchCardTargets() {
       return;
     }
 
-    const badgeHostElement = resolveBadgeHost(anchorElement);
     const cardHostElement = resolveCardHost(anchorElement);
+    const badgeHostElement = resolveBadgeHost(anchorElement);
 
     if (seenHosts.has(cardHostElement)) {
       return;
