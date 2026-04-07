@@ -200,6 +200,9 @@ Bilibili-Boost/
 └── README.md        # 项目说明
 ```
 
+## 社区
+本项目在 [LINUX DO](https://linux.do/) 社区分享。
+
 ## 作者
 
 **IgniteRan**
