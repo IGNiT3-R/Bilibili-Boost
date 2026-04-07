@@ -14,8 +14,10 @@ const MESSAGE_TYPES = {
   GET_WATCH_RECORDS: 'GET_WATCH_RECORDS',
   UPSERT_WATCH_PROGRESS: 'UPSERT_WATCH_PROGRESS',
   MARK_WATCHED_COMPLETE: 'MARK_WATCHED_COMPLETE',
+  RESTORE_WATCH_RECORD: 'RESTORE_WATCH_RECORD',
   CLEAR_WATCH_RECORD: 'CLEAR_WATCH_RECORD',
-  WATCH_RECORD_UPDATED: 'WATCH_RECORD_UPDATED'
+  WATCH_RECORD_UPDATED: 'WATCH_RECORD_UPDATED',
+  WATCH_RECORDS_UPDATED: 'WATCH_RECORDS_UPDATED'
 };
 
 const SETTINGS_KEY = 'settings';
@@ -164,6 +166,10 @@ function formatWatchStatus(record) {
   };
 }
 
+function isCompletedRecord(record) {
+  return Boolean(record && (record.completed || clampProgress(record.maxProgress) >= COMPLETE_PROGRESS));
+}
+
 async function sendMessage(type, payload) {
   const response = await chrome.runtime.sendMessage({
     type,
@@ -195,17 +201,32 @@ async function loadSettings() {
 }
 
 function updateCachedRecord(bvid, record) {
-  const normalizedBvid = normalizeBvid(bvid);
+  updateCachedRecords({
+    [bvid]: record || null
+  });
+}
 
-  if (!normalizedBvid) {
-    return;
-  }
+function updateCachedRecords(records) {
+  const entries = Object.entries(records || {});
+  let currentVideoChanged = false;
 
-  state.watch.recordCache.set(normalizedBvid, record || null);
+  entries.forEach(([rawBvid, record]) => {
+    const normalizedBvid = normalizeBvid(rawBvid);
 
-  if (normalizedBvid === state.watch.currentBvid) {
-    state.watch.currentRecord = record || null;
-    state.watch.lastSyncedProgress = record ? clampProgress(record.maxProgress) : 0;
+    if (!normalizedBvid) {
+      return;
+    }
+
+    state.watch.recordCache.set(normalizedBvid, record || null);
+
+    if (normalizedBvid === state.watch.currentBvid) {
+      state.watch.currentRecord = record || null;
+      state.watch.lastSyncedProgress = record ? clampProgress(record.maxProgress) : 0;
+      currentVideoChanged = true;
+    }
+  });
+
+  if (currentVideoChanged) {
     renderWatchPanel();
   }
 }
@@ -479,13 +500,33 @@ async function clearWatchRecordByBvid(bvid) {
   updateCachedRecord(normalizedBvid, null);
 }
 
+async function restoreWatchRecordByBvid(bvid) {
+  const normalizedBvid = normalizeBvid(bvid);
+
+  if (!normalizedBvid) {
+    return null;
+  }
+
+  const record = await sendMessage(MESSAGE_TYPES.RESTORE_WATCH_RECORD, {
+    bvid: normalizedBvid
+  });
+
+  updateCachedRecord(normalizedBvid, record || null);
+  return record || null;
+}
+
 async function markCurrentVideoComplete() {
   if (!state.watch.currentBvid) {
     return;
   }
 
   try {
-    await markWatchRecordComplete(state.watch.currentBvid, state.watch.currentTitle);
+    if (isCompletedRecord(state.watch.currentRecord)) {
+      await restoreWatchRecordByBvid(state.watch.currentBvid);
+    } else {
+      await markWatchRecordComplete(state.watch.currentBvid, state.watch.currentTitle);
+    }
+
     scheduleRefresh(60);
   } catch (error) {
     console.warn('[Bilibili-Boost] 手动标记已看完失败', error);
@@ -523,8 +564,8 @@ function renderWatchPanel() {
   }
 
   if (markButton) {
-    markButton.textContent = status.status === 'complete' ? '已标记已看完' : '标记已看完';
-    markButton.disabled = status.status === 'complete';
+    markButton.textContent = status.status === 'complete' ? '取消已看完' : '标记已看完';
+    markButton.disabled = false;
   }
 
   if (clearButton) {
@@ -962,7 +1003,7 @@ function renderCardWatchToggleState(toggleButton, record) {
   const status = formatWatchStatus(record);
   const isComplete = status.status === 'complete';
   const toggleTitle = isComplete
-    ? '取消已看完标记'
+    ? '取消已看完标记，恢复之前进度'
     : status.status === 'progress'
       ? `${status.text}，点击标记为已看完`
       : '标记为已看完';
@@ -990,7 +1031,7 @@ async function handleCardWatchToggleClick(event) {
 
   try {
     if (toggleButton.dataset.status === 'complete') {
-      await clearWatchRecordByBvid(bvid);
+      await restoreWatchRecordByBvid(bvid);
     } else {
       await markWatchRecordComplete(bvid, toggleButton.dataset.title || '');
     }
@@ -1231,19 +1272,28 @@ function startRouteWatcher() {
 
 function registerRuntimeListeners() {
   chrome.runtime.onMessage.addListener((message) => {
-    if (!message || message.type !== MESSAGE_TYPES.WATCH_RECORD_UPDATED) {
+    if (!message || typeof message.type !== 'string') {
       return false;
     }
 
-    const payload = message.payload || {};
-    const bvid = normalizeBvid(payload.bvid);
+    if (message.type === MESSAGE_TYPES.WATCH_RECORD_UPDATED) {
+      const payload = message.payload || {};
+      const bvid = normalizeBvid(payload.bvid);
 
-    if (!bvid) {
+      if (!bvid) {
+        return false;
+      }
+
+      updateCachedRecord(bvid, payload.record || null);
+      startBootstrapRefresh(60);
       return false;
     }
 
-    updateCachedRecord(bvid, payload.record || null);
-    startBootstrapRefresh(60);
+    if (message.type === MESSAGE_TYPES.WATCH_RECORDS_UPDATED) {
+      updateCachedRecords((message.payload && message.payload.records) || {});
+      startBootstrapRefresh(60);
+    }
+
     return false;
   });
 

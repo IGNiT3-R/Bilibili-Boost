@@ -14,7 +14,7 @@
       <section class="popup__hero">
         <p class="popup__eyebrow">Bilibili-Boost</p>
         <h1 class="popup__title">控制面板</h1>
-        <p class="popup__subtitle">管理插件功能开关，并查看当前视频的已看状态。</p>
+        <p class="popup__subtitle">管理功能开关、当前视频状态，以及已看记录的导入导出。</p>
       </section>
 
       <section class="popup__section">
@@ -97,6 +97,42 @@
             </button>
           </div>
         </div>
+      </section>
+
+      <section class="popup__section">
+        <div class="section__header">
+          <h2>数据管理</h2>
+          <p>可导出或导入已看记录，不会覆盖功能开关。</p>
+        </div>
+
+        <div class="data-actions">
+          <button
+            id="export-records-button"
+            class="action-button"
+            type="button"
+          >
+            导出记录
+          </button>
+          <button
+            id="import-records-button"
+            class="action-button action-button--outline"
+            type="button"
+          >
+            导入记录
+          </button>
+        </div>
+
+        <p
+          id="data-manager-tip"
+          class="section-tip"
+        >导出文件为 JSON，仅包含已看记录。</p>
+
+        <input
+          id="import-records-input"
+          type="file"
+          accept=".json,application/json"
+          hidden
+        />
       </section>
     </main>
 

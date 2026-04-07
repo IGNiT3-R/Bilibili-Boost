@@ -222,6 +222,12 @@ body {
   margin-top: 14px;
 }
 
+.data-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
 .action-button {
   flex: 1;
   min-height: 38px;
@@ -245,4 +251,32 @@ body {
   color: var(--danger);
   border: 1px solid rgba(194, 86, 86, 0.18);
   box-shadow: none;
+}
+
+.action-button--outline {
+  background: linear-gradient(135deg, #ffffff, #eef5fb);
+  color: var(--accent-strong);
+  border: 1px solid rgba(0, 161, 214, 0.16);
+  box-shadow: none;
+}
+
+.action-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+  transform: none;
+}
+
+.section-tip {
+  margin: 12px 0 0;
+  color: var(--text-subtle);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.section-tip[data-status="success"] {
+  color: var(--success);
+}
+
+.section-tip[data-status="error"] {
+  color: var(--danger);
 }
