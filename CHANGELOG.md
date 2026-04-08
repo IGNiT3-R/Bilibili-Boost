@@ -2,6 +2,13 @@
 
 本文档用于记录 Bilibili-Boost 各版本的主要变更。
 
+## v1.3.3
+
+### 修复
+
+- 补充 Firefox 扩展签名校验所需的 `data_collection_permissions` 配置
+- 修复 Firefox 发布包无法通过验证的问题
+
 ## v1.3.2
 
 ### 修复
