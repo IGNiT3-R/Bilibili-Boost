@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bilibili-Boost",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Bilibili-Boost：增强 Bilibili 浏览体验，支持标记看过与播放列表增强",
   "permissions": ["storage", "tabs"],
   "host_permissions": ["*://*.bilibili.com/*"],
