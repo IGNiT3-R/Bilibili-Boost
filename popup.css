@@ -181,6 +181,97 @@ body {
   transform: translateX(18px);
 }
 
+.setting-card {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(244, 249, 255, 0.95);
+  border: 1px solid rgba(0, 161, 214, 0.08);
+}
+
+.setting-card__header h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.setting-card__header p {
+  margin: 6px 0 0;
+  color: var(--text-subtle);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.setting-card--disabled {
+  opacity: 0.62;
+}
+
+.threshold-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.threshold-control__range {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.threshold-control__input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-width: 76px;
+  padding: 0 10px;
+  min-height: 38px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(0, 161, 214, 0.14);
+  color: var(--text-main);
+}
+
+.threshold-control__input input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.threshold-control__input input::-webkit-outer-spin-button,
+.threshold-control__input input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.threshold-control__input span {
+  color: var(--text-subtle);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.threshold-control__meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--text-subtle);
+  font-size: 11px;
+}
+
+.threshold-control__range:disabled,
+.threshold-control__input input:disabled {
+  cursor: not-allowed;
+}
+
 .video-card {
   margin-top: 14px;
   padding: 14px;

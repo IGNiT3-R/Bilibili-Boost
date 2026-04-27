@@ -7,6 +7,17 @@
  */
 
 const extensionApi = globalThis.browser || globalThis.chrome;
+const DEFAULT_COMPLETE_THRESHOLD = 98;
+const COMPLETE_THRESHOLD_MIN = 90;
+const COMPLETE_THRESHOLD_MAX = 100;
+const MAX_INCOMPLETE_PROGRESS = 99;
+const MIN_VISIBLE_PROGRESS = 5;
+
+const DEFAULT_SETTINGS = {
+  watchMarkerEnabled: true,
+  collectionBoostEnabled: true,
+  completionThreshold: DEFAULT_COMPLETE_THRESHOLD
+};
 
 const MESSAGE_TYPES = {
   GET_SETTINGS: 'GET_SETTINGS',
@@ -21,6 +32,9 @@ const MESSAGE_TYPES = {
 
 const elements = {
   watchMarkerToggle: document.getElementById('watch-marker-toggle'),
+  completionThresholdRange: document.getElementById('completion-threshold-range'),
+  completionThresholdNumber: document.getElementById('completion-threshold-number'),
+  completionThresholdCard: document.querySelector('.setting-card--threshold'),
   collectionBoostToggle: document.getElementById('collection-boost-toggle'),
   currentVideoTip: document.getElementById('current-video-tip'),
   currentVideoCard: document.getElementById('current-video-card'),
@@ -37,6 +51,7 @@ const elements = {
 
 let currentVideo = null;
 let currentVideoRecord = null;
+let currentSettings = { ...DEFAULT_SETTINGS };
 
 function normalizeBvid(rawValue) {
   if (typeof rawValue !== 'string') {
@@ -56,6 +71,118 @@ function parseBvidFromUrl(url) {
   return normalizeBvid(match ? match[1] : '');
 }
 
+function clampProgress(progress) {
+  const numericValue = Number(progress);
+
+  if (!Number.isFinite(numericValue)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(numericValue)));
+}
+
+function sanitizeCompletionThreshold(value) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return DEFAULT_COMPLETE_THRESHOLD;
+  }
+
+  return Math.max(
+    COMPLETE_THRESHOLD_MIN,
+    Math.min(COMPLETE_THRESHOLD_MAX, Math.round(numericValue))
+  );
+}
+
+function normalizeSettings(settings) {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...(settings || {}),
+    watchMarkerEnabled: settings && Object.prototype.hasOwnProperty.call(settings, 'watchMarkerEnabled')
+      ? Boolean(settings.watchMarkerEnabled)
+      : DEFAULT_SETTINGS.watchMarkerEnabled,
+    collectionBoostEnabled: settings && Object.prototype.hasOwnProperty.call(settings, 'collectionBoostEnabled')
+      ? Boolean(settings.collectionBoostEnabled)
+      : DEFAULT_SETTINGS.collectionBoostEnabled,
+    completionThreshold: sanitizeCompletionThreshold(settings && settings.completionThreshold)
+  };
+}
+
+function getRecordPlaybackProgress(record) {
+  if (!record || typeof record !== 'object') {
+    return 0;
+  }
+
+  const duration = Number(record.duration);
+  const lastPosition = Number(record.lastPosition);
+
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(lastPosition) || lastPosition <= 0) {
+    return 0;
+  }
+
+  return clampProgress((lastPosition / duration) * 100);
+}
+
+function isPlaybackCompletionAtEnd(record) {
+  if (!record || typeof record !== 'object') {
+    return false;
+  }
+
+  const duration = Number(record.duration);
+  const lastPosition = Number(record.lastPosition);
+
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(lastPosition) || lastPosition <= 0) {
+    return false;
+  }
+
+  return lastPosition >= Math.max(Math.round(duration) - 1, 0) || getRecordPlaybackProgress(record) >= 99;
+}
+
+function getRecordCompletionKind(record) {
+  if (!record || !record.completed) {
+    return null;
+  }
+
+  if (
+    record.completionSource === 'manual' ||
+    record.completionSource === 'ended' ||
+    record.completionSource === 'threshold'
+  ) {
+    return record.completionSource;
+  }
+
+  return isPlaybackCompletionAtEnd(record) ? 'ended' : 'threshold';
+}
+
+function getRecordProgress(record) {
+  if (!record || typeof record !== 'object') {
+    return 0;
+  }
+
+  const rawMaxProgress = clampProgress(record.maxProgress);
+  const storedIncompleteProgress = Math.min(
+    MAX_INCOMPLETE_PROGRESS,
+    clampProgress(record.lastIncompleteProgress)
+  );
+  const playbackProgress = Math.min(MAX_INCOMPLETE_PROGRESS, getRecordPlaybackProgress(record));
+
+  if (record.completed) {
+    const completionKind = getRecordCompletionKind(record);
+
+    if (completionKind === 'manual' || completionKind === 'ended') {
+      return 100;
+    }
+
+    return Math.max(
+      storedIncompleteProgress,
+      playbackProgress,
+      rawMaxProgress >= 100 ? 0 : Math.min(MAX_INCOMPLETE_PROGRESS, rawMaxProgress)
+    );
+  }
+
+  return Math.max(rawMaxProgress, storedIncompleteProgress, playbackProgress);
+}
+
 function formatWatchStatus(record) {
   if (!record) {
     return {
@@ -64,16 +191,16 @@ function formatWatchStatus(record) {
     };
   }
 
-  if (record.completed || Number(record.maxProgress) >= 95) {
+  if (isCompletedRecord(record)) {
     return {
       text: '已看完',
       status: 'complete'
     };
   }
 
-  const progress = Math.max(0, Math.min(100, Math.round(Number(record.maxProgress) || 0)));
+  const progress = getRecordProgress(record);
 
-  if (progress < 5) {
+  if (progress < MIN_VISIBLE_PROGRESS) {
     return {
       text: '未记录',
       status: 'empty'
@@ -87,7 +214,19 @@ function formatWatchStatus(record) {
 }
 
 function isCompletedRecord(record) {
-  return Boolean(record && (record.completed || Number(record.maxProgress) >= 95));
+  if (!record) {
+    return false;
+  }
+
+  if (record.completed) {
+    const completionKind = getRecordCompletionKind(record);
+
+    if (completionKind === 'manual' || completionKind === 'ended') {
+      return true;
+    }
+  }
+
+  return getRecordProgress(record) >= currentSettings.completionThreshold;
 }
 
 async function sendMessage(type, payload) {
@@ -163,16 +302,71 @@ async function refreshCurrentVideoInfo() {
 }
 
 async function initializeSettings() {
-  const settings = await sendMessage(MESSAGE_TYPES.GET_SETTINGS);
+  currentSettings = normalizeSettings(await sendMessage(MESSAGE_TYPES.GET_SETTINGS));
 
-  elements.watchMarkerToggle.checked = Boolean(settings.watchMarkerEnabled);
-  elements.collectionBoostToggle.checked = Boolean(settings.collectionBoostEnabled);
+  elements.watchMarkerToggle.checked = Boolean(currentSettings.watchMarkerEnabled);
+  elements.collectionBoostToggle.checked = Boolean(currentSettings.collectionBoostEnabled);
+  syncCompletionThresholdControls(currentSettings.completionThreshold);
+  syncCompletionThresholdAvailability();
 }
 
 async function handleSettingToggle(key, value) {
-  await sendMessage(MESSAGE_TYPES.UPDATE_SETTINGS, {
+  currentSettings = normalizeSettings(await sendMessage(MESSAGE_TYPES.UPDATE_SETTINGS, {
     [key]: value
-  });
+  }));
+
+  elements.watchMarkerToggle.checked = Boolean(currentSettings.watchMarkerEnabled);
+  elements.collectionBoostToggle.checked = Boolean(currentSettings.collectionBoostEnabled);
+  syncCompletionThresholdControls(currentSettings.completionThreshold);
+  syncCompletionThresholdAvailability();
+  renderCurrentVideoCard(currentVideo, currentVideoRecord);
+}
+
+function syncCompletionThresholdControls(threshold) {
+  const normalizedThreshold = sanitizeCompletionThreshold(threshold);
+  elements.completionThresholdRange.value = String(normalizedThreshold);
+  elements.completionThresholdNumber.value = String(normalizedThreshold);
+}
+
+function syncCompletionThresholdAvailability() {
+  const disabled = !elements.watchMarkerToggle.checked;
+
+  elements.completionThresholdRange.disabled = disabled;
+  elements.completionThresholdNumber.disabled = disabled;
+
+  if (elements.completionThresholdCard) {
+    elements.completionThresholdCard.classList.toggle('setting-card--disabled', disabled);
+  }
+}
+
+async function commitCompletionThreshold(rawValue) {
+  const nextThreshold = sanitizeCompletionThreshold(rawValue);
+
+  currentSettings = normalizeSettings(await sendMessage(MESSAGE_TYPES.UPDATE_SETTINGS, {
+    completionThreshold: nextThreshold
+  }));
+  syncCompletionThresholdControls(currentSettings.completionThreshold);
+  renderCurrentVideoCard(currentVideo, currentVideoRecord);
+}
+
+function previewCompletionThreshold(rawValue) {
+  if (rawValue === '') {
+    return;
+  }
+
+  const numericValue = Number(rawValue);
+
+  if (!Number.isFinite(numericValue)) {
+    return;
+  }
+
+  const nextThreshold = sanitizeCompletionThreshold(numericValue);
+  currentSettings = {
+    ...currentSettings,
+    completionThreshold: nextThreshold
+  };
+  elements.completionThresholdRange.value = String(nextThreshold);
+  renderCurrentVideoCard(currentVideo, currentVideoRecord);
 }
 
 async function handleMarkComplete() {
@@ -307,6 +501,34 @@ async function initializePopup() {
 
   elements.watchMarkerToggle.addEventListener('change', (event) => {
     void handleSettingToggle('watchMarkerEnabled', event.target.checked);
+  });
+
+  elements.completionThresholdRange.addEventListener('input', (event) => {
+    previewCompletionThreshold(event.target.value);
+    elements.completionThresholdNumber.value = event.target.value;
+  });
+
+  elements.completionThresholdRange.addEventListener('change', (event) => {
+    void commitCompletionThreshold(event.target.value);
+  });
+
+  elements.completionThresholdNumber.addEventListener('input', (event) => {
+    previewCompletionThreshold(event.target.value);
+  });
+
+  elements.completionThresholdNumber.addEventListener('change', (event) => {
+    void commitCompletionThreshold(event.target.value);
+  });
+
+  elements.completionThresholdNumber.addEventListener('blur', (event) => {
+    void commitCompletionThreshold(event.target.value);
+  });
+
+  elements.completionThresholdNumber.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.currentTarget.blur();
+    }
   });
 
   elements.collectionBoostToggle.addEventListener('change', (event) => {

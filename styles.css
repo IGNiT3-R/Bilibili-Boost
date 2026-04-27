@@ -245,13 +245,17 @@
 .bb-watch-badge {
   position: absolute;
   top: 6px;
-  right: 6px;
+  left: 6px;
   z-index: 10;
   display: inline-flex;
+  box-sizing: border-box;
   align-items: center;
-  min-height: 22px;
-  max-width: 96px;
-  padding: 0 8px;
+  justify-content: center;
+  min-width: 46px;
+  width: max-content;
+  min-height: 20px;
+  max-width: calc(100% - 12px);
+  padding: 0 7px;
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 999px;
   background: rgba(16, 33, 47, 0.82);
@@ -262,6 +266,8 @@
   line-height: 1;
   pointer-events: none;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .bb-watch-badge[data-status="progress"] {

@@ -23,10 +23,15 @@ const MESSAGE_TYPES = {
 };
 
 const SETTINGS_KEY = 'settings';
+const DEFAULT_COMPLETE_THRESHOLD = 98;
+const COMPLETE_THRESHOLD_MIN = 90;
+const COMPLETE_THRESHOLD_MAX = 100;
+const MAX_INCOMPLETE_PROGRESS = 99;
 
 const DEFAULT_SETTINGS = {
   watchMarkerEnabled: true,
-  collectionBoostEnabled: true
+  collectionBoostEnabled: true,
+  completionThreshold: DEFAULT_COMPLETE_THRESHOLD
 };
 
 const PLAYLIST_HEADER_SELECTOR = '.video-sections-head, .video-pod__header';
@@ -51,9 +56,10 @@ const THUMBNAIL_BADGE_HOST_CLASS = 'bb-watch-badge-host';
 const CARD_WATCH_TOGGLE_CLASS = 'bb-watch-card-toggle';
 const CARD_WATCH_TOGGLE_ROW_CLASS = 'bb-watch-card-row';
 const CARD_WATCH_TOGGLE_ROW_GENERATED_CLASS = 'bb-watch-card-row--generated';
+const BADGE_HOST_MIN_WIDTH = 96;
+const BADGE_HOST_MIN_HEIGHT = 54;
 
 const MIN_VISIBLE_PROGRESS = 5;
-const COMPLETE_PROGRESS = 95;
 const AUTO_SAVE_PROGRESS_STEP = 5;
 const AUTO_SAVE_INTERVAL_MS = 15000;
 
@@ -81,7 +87,7 @@ const state = {
     lastSyncAt: 0,
     saveInFlight: false,
     needsResync: false,
-    pendingComplete: false
+    pendingForceComplete: false
   }
 };
 
@@ -113,12 +119,130 @@ function clampProgress(progress) {
   return Math.max(0, Math.min(100, Math.round(numericValue)));
 }
 
+function sanitizeCompletionThreshold(value) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return DEFAULT_COMPLETE_THRESHOLD;
+  }
+
+  return Math.max(
+    COMPLETE_THRESHOLD_MIN,
+    Math.min(COMPLETE_THRESHOLD_MAX, Math.round(numericValue))
+  );
+}
+
+function normalizeSettings(settings) {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...(settings || {}),
+    watchMarkerEnabled: settings && Object.prototype.hasOwnProperty.call(settings, 'watchMarkerEnabled')
+      ? Boolean(settings.watchMarkerEnabled)
+      : DEFAULT_SETTINGS.watchMarkerEnabled,
+    collectionBoostEnabled: settings && Object.prototype.hasOwnProperty.call(settings, 'collectionBoostEnabled')
+      ? Boolean(settings.collectionBoostEnabled)
+      : DEFAULT_SETTINGS.collectionBoostEnabled,
+    completionThreshold: sanitizeCompletionThreshold(settings && settings.completionThreshold)
+  };
+}
+
+function getCompletionThreshold(settings = state.settings) {
+  return sanitizeCompletionThreshold(settings && settings.completionThreshold);
+}
+
+function getRecordPlaybackProgress(record) {
+  if (!record || typeof record !== 'object') {
+    return 0;
+  }
+
+  const duration = Number(record.duration);
+  const lastPosition = Number(record.lastPosition);
+
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(lastPosition) || lastPosition <= 0) {
+    return 0;
+  }
+
+  return clampProgress((lastPosition / duration) * 100);
+}
+
+function isPlaybackCompletionAtEnd(record) {
+  if (!record || typeof record !== 'object') {
+    return false;
+  }
+
+  const duration = Number(record.duration);
+  const lastPosition = Number(record.lastPosition);
+
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(lastPosition) || lastPosition <= 0) {
+    return false;
+  }
+
+  return lastPosition >= Math.max(Math.round(duration) - 1, 0) || getRecordPlaybackProgress(record) >= 99;
+}
+
+function getRecordCompletionKind(record) {
+  if (!record || !record.completed) {
+    return null;
+  }
+
+  if (
+    record.completionSource === 'manual' ||
+    record.completionSource === 'ended' ||
+    record.completionSource === 'threshold'
+  ) {
+    return record.completionSource;
+  }
+
+  return isPlaybackCompletionAtEnd(record) ? 'ended' : 'threshold';
+}
+
+function getRecordProgress(record) {
+  if (!record || typeof record !== 'object') {
+    return 0;
+  }
+
+  const rawMaxProgress = clampProgress(record.maxProgress);
+  const storedIncompleteProgress = Math.min(
+    MAX_INCOMPLETE_PROGRESS,
+    clampProgress(record.lastIncompleteProgress)
+  );
+  const playbackProgress = Math.min(MAX_INCOMPLETE_PROGRESS, getRecordPlaybackProgress(record));
+
+  if (record.completed) {
+    const completionKind = getRecordCompletionKind(record);
+
+    if (completionKind === 'manual' || completionKind === 'ended') {
+      return 100;
+    }
+
+    return Math.max(
+      storedIncompleteProgress,
+      playbackProgress,
+      rawMaxProgress >= 100 ? 0 : Math.min(MAX_INCOMPLETE_PROGRESS, rawMaxProgress)
+    );
+  }
+
+  return Math.max(
+    rawMaxProgress,
+    storedIncompleteProgress,
+    playbackProgress
+  );
+}
+
 function isVideoPage() {
   return /\/video\/BV[0-9A-Za-z]+/.test(location.href);
 }
 
 function isSpacePage() {
   return location.hostname === 'space.bilibili.com';
+}
+
+function isSearchPage() {
+  return location.hostname === 'search.bilibili.com';
+}
+
+function supportsCardWatchToggle() {
+  return isSpacePage() || isSearchPage();
 }
 
 function getCurrentVideoBvid() {
@@ -148,9 +272,10 @@ function formatWatchStatus(record) {
     };
   }
 
-  const progress = clampProgress(record.maxProgress);
+  const progress = getRecordProgress(record);
+  const completionThreshold = getCompletionThreshold();
 
-  if (record.completed || progress >= COMPLETE_PROGRESS) {
+  if (isCompletedRecord(record, completionThreshold)) {
     return {
       text: '已看完',
       status: 'complete'
@@ -170,8 +295,20 @@ function formatWatchStatus(record) {
   };
 }
 
-function isCompletedRecord(record) {
-  return Boolean(record && (record.completed || clampProgress(record.maxProgress) >= COMPLETE_PROGRESS));
+function isCompletedRecord(record, completionThreshold = getCompletionThreshold()) {
+  if (!record) {
+    return false;
+  }
+
+  if (record.completed) {
+    const completionKind = getRecordCompletionKind(record);
+
+    if (completionKind === 'manual' || completionKind === 'ended') {
+      return true;
+    }
+  }
+
+  return getRecordProgress(record) >= completionThreshold;
 }
 
 async function sendMessage(type, payload) {
@@ -194,10 +331,7 @@ function normalizeInlineText(text) {
 async function loadSettings() {
   try {
     const settings = await sendMessage(MESSAGE_TYPES.GET_SETTINGS);
-    state.settings = {
-      ...DEFAULT_SETTINGS,
-      ...(settings || {})
-    };
+    state.settings = normalizeSettings(settings);
   } catch (error) {
     console.warn('[Bilibili-Boost] 读取设置失败，已回退到默认配置', error);
     state.settings = { ...DEFAULT_SETTINGS };
@@ -225,7 +359,7 @@ function updateCachedRecords(records) {
 
     if (normalizedBvid === state.watch.currentBvid) {
       state.watch.currentRecord = record || null;
-      state.watch.lastSyncedProgress = record ? clampProgress(record.maxProgress) : 0;
+      state.watch.lastSyncedProgress = record ? getRecordProgress(record) : 0;
       currentVideoChanged = true;
     }
   });
@@ -269,7 +403,7 @@ async function syncCurrentVideoContext() {
     state.watch.lastSyncAt = 0;
     state.watch.saveInFlight = false;
     state.watch.needsResync = false;
-    state.watch.pendingComplete = false;
+    state.watch.pendingForceComplete = false;
   }
 
   state.watch.currentBvid = nextBvid;
@@ -293,7 +427,7 @@ async function syncCurrentVideoContext() {
   }
 
   state.watch.currentRecord = state.watch.recordCache.get(nextBvid) || null;
-  state.watch.lastSyncedProgress = state.watch.currentRecord ? clampProgress(state.watch.currentRecord.maxProgress) : 0;
+  state.watch.lastSyncedProgress = state.watch.currentRecord ? getRecordProgress(state.watch.currentRecord) : 0;
 }
 
 function getCollectionControls() {
@@ -732,11 +866,12 @@ async function persistWatchProgress(forceComplete = false, forceSync = false) {
   }
 
   const now = Date.now();
-  const existingProgress = state.watch.currentRecord ? clampProgress(state.watch.currentRecord.maxProgress) : 0;
+  const completionThreshold = getCompletionThreshold();
+  const existingProgress = state.watch.currentRecord ? getRecordProgress(state.watch.currentRecord) : 0;
   const maxKnownProgress = Math.max(existingProgress, state.watch.lastSyncedProgress);
   const shouldSyncByProgress = progress >= maxKnownProgress + AUTO_SAVE_PROGRESS_STEP;
   const shouldSyncByTime = progress > state.watch.lastSyncedProgress && now - state.watch.lastSyncAt >= AUTO_SAVE_INTERVAL_MS;
-  const shouldComplete = forceComplete || progress >= COMPLETE_PROGRESS;
+  const shouldComplete = forceComplete || progress >= completionThreshold;
 
   if (!forceSync && !shouldComplete && !shouldSyncByProgress && !shouldSyncByTime) {
     return;
@@ -744,7 +879,7 @@ async function persistWatchProgress(forceComplete = false, forceSync = false) {
 
   if (state.watch.saveInFlight) {
     state.watch.needsResync = true;
-    state.watch.pendingComplete = state.watch.pendingComplete || shouldComplete;
+    state.watch.pendingForceComplete = state.watch.pendingForceComplete || forceComplete;
     return;
   }
 
@@ -757,23 +892,23 @@ async function persistWatchProgress(forceComplete = false, forceSync = false) {
       progress,
       duration: Math.round(duration),
       currentTime: Math.round(player.currentTime),
-      completed: shouldComplete,
+      completed: forceComplete,
       source: 'auto'
     });
 
     updateCachedRecord(state.watch.currentBvid, record);
     state.watch.lastSyncAt = now;
-    state.watch.lastSyncedProgress = record ? clampProgress(record.maxProgress) : progress;
+    state.watch.lastSyncedProgress = record ? getRecordProgress(record) : progress;
   } catch (error) {
     console.warn('[Bilibili-Boost] 自动保存观看进度失败', error);
   } finally {
     state.watch.saveInFlight = false;
 
     if (state.watch.needsResync) {
-      const pendingComplete = state.watch.pendingComplete;
+      const pendingForceComplete = state.watch.pendingForceComplete;
       state.watch.needsResync = false;
-      state.watch.pendingComplete = false;
-      void persistWatchProgress(pendingComplete, true);
+      state.watch.pendingForceComplete = false;
+      void persistWatchProgress(pendingForceComplete, true);
     }
   }
 }
@@ -839,29 +974,83 @@ function findBadgeCoverHost(rootElement, cardHostElement) {
     return null;
   }
 
-  if (isValidBadgeHost(rootElement, cardHostElement)) {
-    return rootElement;
-  }
-
-  const candidateElements = Array.from(rootElement.querySelectorAll(CARD_COVER_SELECTOR));
-
-  for (const candidateElement of candidateElements) {
-    if (isValidBadgeHost(candidateElement, cardHostElement)) {
-      return candidateElement;
+  const candidateElements = [];
+  const seenElements = new Set();
+  const collectCandidate = (candidateElement) => {
+    if (!(candidateElement instanceof HTMLElement) || seenElements.has(candidateElement)) {
+      return;
     }
-  }
+
+    seenElements.add(candidateElement);
+
+    if (isValidBadgeHost(candidateElement, cardHostElement)) {
+      candidateElements.push(candidateElement);
+    }
+  };
+
+  collectCandidate(rootElement);
+  Array.from(rootElement.querySelectorAll(CARD_COVER_SELECTOR)).forEach(collectCandidate);
 
   const mediaElement = rootElement.querySelector(CARD_COVER_MEDIA_SELECTOR);
 
-  if (mediaElement && mediaElement.parentElement instanceof HTMLElement && isValidBadgeHost(mediaElement.parentElement, cardHostElement)) {
-    return mediaElement.parentElement;
+  if (mediaElement instanceof HTMLElement) {
+    let ancestorElement = mediaElement.parentElement;
+
+    while (ancestorElement instanceof HTMLElement && ancestorElement !== cardHostElement) {
+      collectCandidate(ancestorElement);
+      ancestorElement = ancestorElement.parentElement;
+    }
+
+    collectCandidate(cardHostElement);
   }
 
-  return null;
+  return pickBadgeHostCandidate(candidateElements);
+}
+
+function pickBadgeHostCandidate(candidateElements) {
+  if (!Array.isArray(candidateElements) || candidateElements.length === 0) {
+    return null;
+  }
+
+  return candidateElements.reduce((bestElement, currentElement) => {
+    if (!(bestElement instanceof HTMLElement)) {
+      return currentElement;
+    }
+
+    return getBadgeHostScore(currentElement) > getBadgeHostScore(bestElement)
+      ? currentElement
+      : bestElement;
+  }, null);
+}
+
+function getBadgeHostScore(candidateElement) {
+  if (!(candidateElement instanceof HTMLElement)) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const rect = candidateElement.getBoundingClientRect();
+  const classText = typeof candidateElement.className === 'string'
+    ? candidateElement.className.toLowerCase()
+    : '';
+  let score = rect.width * rect.height;
+
+  if (candidateElement.querySelector(CARD_COVER_MEDIA_SELECTOR)) {
+    score += 20000;
+  }
+
+  if (/(cover|image|pic|thumb|thumbnail)/.test(classText)) {
+    score += 10000;
+  }
+
+  if (candidateElement.tagName === 'A') {
+    score += 4000;
+  }
+
+  return score;
 }
 
 function isValidBadgeHost(candidateElement, cardHostElement) {
-  if (!(candidateElement instanceof HTMLElement)) {
+  if (!(candidateElement instanceof HTMLElement) || !candidateElement.isConnected) {
     return false;
   }
 
@@ -869,11 +1058,21 @@ function isValidBadgeHost(candidateElement, cardHostElement) {
     return false;
   }
 
+  if (candidateElement.matches(CARD_COVER_MEDIA_SELECTOR)) {
+    return false;
+  }
+
+  const rect = candidateElement.getBoundingClientRect();
+
+  if (rect.width < BADGE_HOST_MIN_WIDTH || rect.height < BADGE_HOST_MIN_HEIGHT) {
+    return false;
+  }
+
   const classText = typeof candidateElement.className === 'string'
     ? candidateElement.className.toLowerCase()
     : '';
   const hasCoverHint = /(cover|image|pic|thumb|thumbnail)/.test(classText);
-  const hasMedia = candidateElement.matches(CARD_COVER_MEDIA_SELECTOR) || Boolean(candidateElement.querySelector(CARD_COVER_MEDIA_SELECTOR));
+  const hasMedia = Boolean(candidateElement.querySelector(CARD_COVER_MEDIA_SELECTOR));
   const containsTitle = candidateElement !== cardHostElement && Boolean(candidateElement.querySelector(CARD_TITLE_SELECTOR));
 
   if (containsTitle) {
@@ -944,7 +1143,7 @@ function getCardVideoTitle(hostElement, anchorElement) {
 }
 
 function looksLikeCardMetaText(text) {
-  const normalizedText = normalizeInlineText(text);
+  const normalizedText = normalizeInlineText(text).replace(/^[·•・|/\\-]+/, '');
 
   if (!normalizedText) {
     return false;
@@ -1172,7 +1371,7 @@ function renderThumbnailBadge(hostElement, record) {
 }
 
 function renderCardWatchToggles(targets) {
-  if (!state.settings.watchMarkerEnabled || !isSpacePage()) {
+  if (!state.settings.watchMarkerEnabled || !supportsCardWatchToggle()) {
     clearAllCardWatchToggles();
     return;
   }
@@ -1377,10 +1576,7 @@ function registerRuntimeListeners() {
       return;
     }
 
-    state.settings = {
-      ...DEFAULT_SETTINGS,
-      ...(changes[SETTINGS_KEY].newValue || {})
-    };
+    state.settings = normalizeSettings(changes[SETTINGS_KEY].newValue || {});
 
     if (!state.settings.collectionBoostEnabled) {
       resetCollectionBoost();

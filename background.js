@@ -14,11 +14,15 @@ const WATCH_STORE_NAME = 'watch_history';
 const SETTINGS_KEY = 'settings';
 const EXPORT_SCHEMA_VERSION = 1;
 const MIN_VISIBLE_PROGRESS = 5;
-const COMPLETE_PROGRESS = 95;
+const DEFAULT_COMPLETE_THRESHOLD = 98;
+const COMPLETE_THRESHOLD_MIN = 90;
+const COMPLETE_THRESHOLD_MAX = 100;
+const MAX_INCOMPLETE_PROGRESS = 99;
 
 const DEFAULT_SETTINGS = {
   watchMarkerEnabled: true,
-  collectionBoostEnabled: true
+  collectionBoostEnabled: true,
+  completionThreshold: DEFAULT_COMPLETE_THRESHOLD
 };
 
 const MESSAGE_TYPES = {
@@ -75,6 +79,144 @@ function normalizeNonNegativeInteger(value, fallbackValue = 0) {
   return Math.round(numericValue);
 }
 
+function sanitizeCompletionThreshold(value) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return DEFAULT_COMPLETE_THRESHOLD;
+  }
+
+  return Math.max(
+    COMPLETE_THRESHOLD_MIN,
+    Math.min(COMPLETE_THRESHOLD_MAX, Math.round(numericValue))
+  );
+}
+
+function normalizeSettings(rawSettings) {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...(rawSettings || {}),
+    watchMarkerEnabled: rawSettings && Object.prototype.hasOwnProperty.call(rawSettings, 'watchMarkerEnabled')
+      ? Boolean(rawSettings.watchMarkerEnabled)
+      : DEFAULT_SETTINGS.watchMarkerEnabled,
+    collectionBoostEnabled: rawSettings && Object.prototype.hasOwnProperty.call(rawSettings, 'collectionBoostEnabled')
+      ? Boolean(rawSettings.collectionBoostEnabled)
+      : DEFAULT_SETTINGS.collectionBoostEnabled,
+    completionThreshold: sanitizeCompletionThreshold(rawSettings && rawSettings.completionThreshold)
+  };
+}
+
+function shouldPersistSettings(rawSettings, normalizedSettings) {
+  if (!rawSettings || typeof rawSettings !== 'object') {
+    return true;
+  }
+
+  return (
+    Boolean(rawSettings.watchMarkerEnabled) !== Boolean(normalizedSettings.watchMarkerEnabled) ||
+    Boolean(rawSettings.collectionBoostEnabled) !== Boolean(normalizedSettings.collectionBoostEnabled) ||
+    Number(rawSettings.completionThreshold) !== normalizedSettings.completionThreshold
+  );
+}
+
+function getRecordPlaybackProgress(record) {
+  if (!record || typeof record !== 'object') {
+    return 0;
+  }
+
+  const duration = normalizeNonNegativeInteger(record.duration, 0);
+  const lastPosition = normalizeNonNegativeInteger(record.lastPosition, 0);
+
+  if (duration <= 0 || lastPosition <= 0) {
+    return 0;
+  }
+
+  return clampProgress((lastPosition / duration) * 100);
+}
+
+function isPlaybackCompletionAtEnd(record) {
+  if (!record || typeof record !== 'object') {
+    return false;
+  }
+
+  const duration = normalizeNonNegativeInteger(record.duration, 0);
+  const lastPosition = normalizeNonNegativeInteger(record.lastPosition, 0);
+
+  if (duration <= 0 || lastPosition <= 0) {
+    return false;
+  }
+
+  return lastPosition >= Math.max(duration - 1, 0) || getRecordPlaybackProgress(record) >= 99;
+}
+
+function getRecordCompletionKind(record) {
+  if (!record || !record.completed) {
+    return null;
+  }
+
+  if (
+    record.completionSource === 'manual' ||
+    record.completionSource === 'ended' ||
+    record.completionSource === 'threshold'
+  ) {
+    return record.completionSource;
+  }
+
+  return isPlaybackCompletionAtEnd(record) ? 'ended' : 'threshold';
+}
+
+function getRecordIncompleteProgress(record) {
+  if (!record || typeof record !== 'object') {
+    return 0;
+  }
+
+  const rawMaxProgress = clampProgress(record.maxProgress);
+  const storedIncompleteProgress = Math.min(
+    MAX_INCOMPLETE_PROGRESS,
+    clampProgress(record.lastIncompleteProgress)
+  );
+  const playbackProgress = Math.min(MAX_INCOMPLETE_PROGRESS, getRecordPlaybackProgress(record));
+
+  if (record.completed) {
+    if (
+      getRecordCompletionKind(record) === 'manual' &&
+      storedIncompleteProgress === 0 &&
+      playbackProgress === 0
+    ) {
+      return 0;
+    }
+
+    return Math.max(
+      storedIncompleteProgress,
+      playbackProgress,
+      rawMaxProgress >= 100 ? 0 : Math.min(MAX_INCOMPLETE_PROGRESS, rawMaxProgress)
+    );
+  }
+
+  return Math.max(
+    Math.min(MAX_INCOMPLETE_PROGRESS, rawMaxProgress),
+    storedIncompleteProgress,
+    playbackProgress
+  );
+}
+
+function isRecordEffectivelyCompleted(record, completionThreshold) {
+  if (!record || typeof record !== 'object') {
+    return false;
+  }
+
+  const threshold = sanitizeCompletionThreshold(completionThreshold);
+
+  if (record.completed) {
+    const completionKind = getRecordCompletionKind(record);
+
+    if (completionKind === 'manual' || completionKind === 'ended') {
+      return true;
+    }
+  }
+
+  return getRecordIncompleteProgress(record) >= threshold;
+}
+
 function requestToPromise(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -128,12 +270,10 @@ async function withStore(mode, handler) {
 
 async function ensureSettings() {
   const data = await extensionApi.storage.local.get(SETTINGS_KEY);
-  const currentSettings = {
-    ...DEFAULT_SETTINGS,
-    ...(data[SETTINGS_KEY] || {})
-  };
+  const rawSettings = data[SETTINGS_KEY];
+  const currentSettings = normalizeSettings(rawSettings);
 
-  if (!data[SETTINGS_KEY]) {
+  if (shouldPersistSettings(rawSettings, currentSettings)) {
     await extensionApi.storage.local.set({
       [SETTINGS_KEY]: currentSettings
     });
@@ -148,10 +288,10 @@ async function getSettings() {
 
 async function updateSettings(patch) {
   const currentSettings = await ensureSettings();
-  const nextSettings = {
+  const nextSettings = normalizeSettings({
     ...currentSettings,
-    ...patch
-  };
+    ...(patch || {})
+  });
 
   await extensionApi.storage.local.set({
     [SETTINGS_KEY]: nextSettings
@@ -203,10 +343,11 @@ async function getAllWatchRecords() {
   });
 }
 
-function buildWatchRecord(existingRecord, payload) {
+function buildWatchRecord(existingRecord, payload, completionThreshold) {
   const now = Date.now();
   const existing = existingRecord || null;
   const normalizedBvid = normalizeBvid(payload.bvid);
+  const threshold = sanitizeCompletionThreshold(completionThreshold);
 
   if (!normalizedBvid) {
     throw new Error('无效的 BVID');
@@ -217,34 +358,40 @@ function buildWatchRecord(existingRecord, payload) {
   const incomingPosition = Number(payload.currentTime);
   const currentTitle = typeof payload.title === 'string' ? payload.title.trim() : '';
   const source = payload.source === 'manual' ? 'manual' : 'auto';
-  const existingProgress = existing ? clampProgress(existing.maxProgress) : 0;
-  const existingIncompleteProgress = existing ? Math.min(clampProgress(existing.lastIncompleteProgress), COMPLETE_PROGRESS - 1) : 0;
+  const existingProgress = existing ? getRecordIncompleteProgress(existing) : 0;
+  const existingCompletionKind = getRecordCompletionKind(existing);
   const existingCompleted = Boolean(existing && existing.completed);
-  const shouldComplete = Boolean(payload.completed) || incomingProgress >= COMPLETE_PROGRESS;
+  const shouldCompleteByManual = source === 'manual' && Boolean(payload.completed);
+  const shouldCompleteByEnded = source !== 'manual' && Boolean(payload.completed);
+  const shouldCompleteByThreshold = source !== 'manual' && !payload.completed && incomingProgress >= threshold;
+  const shouldComplete = shouldCompleteByManual || shouldCompleteByEnded || shouldCompleteByThreshold;
   const completed = existingCompleted || shouldComplete;
+  const nextIncompleteProgress = Math.min(
+    MAX_INCOMPLETE_PROGRESS,
+    Math.max(
+      existingProgress,
+      shouldCompleteByManual ? existingProgress : incomingProgress
+    )
+  );
   const maxProgress = completed
     ? 100
-    : Math.max(existingCompleted ? existingIncompleteProgress : existingProgress, incomingProgress);
-  let lastIncompleteProgress = existingCompleted
-    ? existingIncompleteProgress
-    : Math.min(existingProgress, COMPLETE_PROGRESS - 1);
+    : Math.min(MAX_INCOMPLETE_PROGRESS, Math.max(existingProgress, incomingProgress));
+  const lastIncompleteProgress = completed ? nextIncompleteProgress : maxProgress;
+  let completionSource = null;
 
-  if (!completed) {
-    lastIncompleteProgress = Math.min(maxProgress, COMPLETE_PROGRESS - 1);
-  } else if (!existingCompleted) {
-    lastIncompleteProgress = Math.max(
-      Math.min(existingProgress, COMPLETE_PROGRESS - 1),
-      source === 'manual'
-        ? 0
-        : Math.min(incomingProgress, COMPLETE_PROGRESS - 1)
-    );
+  if (completed) {
+    if (existingCompletionKind === 'manual') {
+      completionSource = 'manual';
+    } else if (shouldCompleteByManual) {
+      completionSource = 'manual';
+    } else if (shouldCompleteByEnded) {
+      completionSource = 'ended';
+    } else if (shouldCompleteByThreshold) {
+      completionSource = 'threshold';
+    } else {
+      completionSource = existingCompletionKind || null;
+    }
   }
-
-  const completionSource = completed
-    ? (existingCompleted
-      ? (existing.completionSource || null)
-      : (source === 'manual' ? 'manual' : 'auto'))
-    : null;
 
   return {
     bvid: normalizedBvid,
@@ -274,10 +421,11 @@ async function saveWatchRecord(payload) {
   }
 
   const currentRecord = await getWatchRecord(normalizedBvid);
+  const settings = await getSettings();
   const nextRecord = buildWatchRecord(currentRecord, {
     ...payload,
     bvid: normalizedBvid
-  });
+  }, settings.completionThreshold);
 
   await withStore('readwrite', async (store) => {
     await requestToPromise(store.put(nextRecord));
@@ -295,14 +443,15 @@ async function restoreWatchRecord(bvid) {
   }
 
   const currentRecord = await getWatchRecord(normalizedBvid);
+  const settings = await getSettings();
 
-  if (!currentRecord || !currentRecord.completed) {
+  if (!currentRecord || !isRecordEffectivelyCompleted(currentRecord, settings.completionThreshold)) {
     return currentRecord || null;
   }
 
   const restoredProgress = Math.min(
-    clampProgress(currentRecord.lastIncompleteProgress),
-    COMPLETE_PROGRESS - 1
+    getRecordIncompleteProgress(currentRecord),
+    sanitizeCompletionThreshold(settings.completionThreshold) - 1
   );
 
   if (restoredProgress < MIN_VISIBLE_PROGRESS) {
@@ -421,19 +570,28 @@ function sanitizeImportedWatchRecord(rawRecord) {
   }
 
   const rawProgress = clampProgress(rawRecord.maxProgress);
-  const completed = Boolean(rawRecord.completed) || rawProgress >= COMPLETE_PROGRESS;
+  const completed = Boolean(rawRecord.completed) || rawProgress >= 100;
   const maxProgress = completed ? 100 : rawProgress;
   const rawIncompleteProgress = clampProgress(rawRecord.lastIncompleteProgress);
   const lastIncompleteProgress = completed
-    ? Math.min(rawIncompleteProgress, COMPLETE_PROGRESS - 1)
-    : Math.min(maxProgress, COMPLETE_PROGRESS - 1);
+    ? Math.min(
+      MAX_INCOMPLETE_PROGRESS,
+      Math.max(rawIncompleteProgress, rawProgress >= 100 ? 0 : rawProgress)
+    )
+    : Math.min(MAX_INCOMPLETE_PROGRESS, Math.max(maxProgress, rawIncompleteProgress));
   const updatedAt = normalizeTimestamp(rawRecord.updatedAt, now);
   const firstViewedAt = normalizeTimestamp(rawRecord.firstViewedAt, updatedAt);
   const completedAt = completed
     ? normalizeTimestamp(rawRecord.completedAt, updatedAt)
     : null;
   const completionSource = completed
-    ? (rawRecord.completionSource === 'manual' ? 'manual' : rawRecord.completionSource === 'auto' ? 'auto' : null)
+    ? (
+      rawRecord.completionSource === 'manual' ? 'manual'
+        : rawRecord.completionSource === 'ended' ? 'ended'
+          : rawRecord.completionSource === 'threshold' ? 'threshold'
+            : rawRecord.completionSource === 'auto' ? 'auto'
+              : null
+    )
     : null;
 
   return {

@@ -46,6 +46,46 @@
           </span>
         </label>
 
+        <section class="setting-card setting-card--threshold">
+          <div class="setting-card__header">
+            <h3>已看完阈值</h3>
+            <p>自动记录达到该进度后，判定为已看完。手动标记和视频自然播放结束仍直接算已看完。</p>
+          </div>
+
+          <div class="threshold-control">
+            <input
+              id="completion-threshold-range"
+              class="threshold-control__range"
+              type="range"
+              min="90"
+              max="100"
+              step="1"
+              value="98"
+            />
+
+            <label
+              class="threshold-control__input"
+              for="completion-threshold-number"
+            >
+              <input
+                id="completion-threshold-number"
+                type="number"
+                min="90"
+                max="100"
+                step="1"
+                value="98"
+                inputmode="numeric"
+              />
+              <span>%</span>
+            </label>
+          </div>
+
+          <div class="threshold-control__meta">
+            <span>90%</span>
+            <span>100%</span>
+          </div>
+        </section>
+
         <label class="toggle-card" for="collection-boost-toggle">
           <div class="toggle-card__text">
             <span class="toggle-card__title">合集增强</span>
