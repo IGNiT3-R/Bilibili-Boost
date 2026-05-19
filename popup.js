@@ -67,8 +67,25 @@ function parseBvidFromUrl(url) {
     return '';
   }
 
-  const match = url.match(/\/video\/(BV[0-9A-Za-z]+)/);
-  return normalizeBvid(match ? match[1] : '');
+  const videoPathMatch = url.match(/\/video\/(BV[0-9A-Za-z]+)/);
+
+  if (videoPathMatch) {
+    return normalizeBvid(videoPathMatch[1]);
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+    const queryBvid = parsedUrl.searchParams.get('bvid');
+
+    if (queryBvid) {
+      return normalizeBvid(queryBvid);
+    }
+  } catch (error) {
+    // 非标准 URL 继续走兜底正则。
+  }
+
+  const queryMatch = url.match(/[?&#]bvid=(BV[0-9A-Za-z]+)/i);
+  return normalizeBvid(queryMatch ? queryMatch[1] : '');
 }
 
 function clampProgress(progress) {

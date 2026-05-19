@@ -62,14 +62,29 @@
 }
 
 .bb-watch-panel {
-  display: inline-flex;
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
   gap: 8px 12px;
   max-width: 100%;
-  margin-left: auto;
-  float: right;
-  vertical-align: middle;
+}
+
+.bb-watch-panel--inline {
+  position: absolute;
+  z-index: 20;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  min-height: 32px;
+  margin: 0;
+  flex-wrap: nowrap;
+}
+
+.bb-watch-panel--block {
+  width: 100%;
+  min-height: 32px;
+  margin: 8px 0 12px;
 }
 
 .bb-watch-panel__status,
@@ -115,6 +130,10 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.bb-watch-panel--inline .bb-watch-panel__actions {
+  flex-wrap: nowrap;
 }
 
 .bb-watch-panel__status:hover,

@@ -37,17 +37,21 @@ const DEFAULT_SETTINGS = {
 const PLAYLIST_HEADER_SELECTOR = '.video-sections-head, .video-pod__header';
 const VIDEO_LIST_BODY_SELECTOR = '.video-pod__body';
 const VIDEO_ITEM_SELECTOR = '.video-pod__item';
-const WATCH_PANEL_TARGET_SELECTOR = 'h1.video-title, h1[class*="video-title"], h1[class*="title"], .video-info-title';
-const WATCH_PANEL_META_SELECTOR = '.video-info-detail, .video-info-detail-list, .video-meta-container, [class*="video-info-detail"], [class*="video-info-meta"]';
+const WATCH_PANEL_TARGET_SELECTOR = 'h1.video-title, h1[class*="video-title"], h1[class*="title"], .video-info-title, #viewbox_report h1, .playlist-container--left h1';
+const WATCH_PANEL_META_SELECTOR = '.video-info-detail, .video-info-detail-list, .video-meta-container, .video-data, [class*="video-info-detail"], [class*="video-info-meta"]';
 const WATCH_PANEL_META_FALLBACK_SELECTOR = '.pubdate-ip-text, [class*="pubdate"]';
-const VIDEO_LINK_SELECTOR = 'a[href*="/video/BV"]';
-const CARD_CONTAINER_SELECTOR = '.bili-video-card, .feed-card, .video-card, .small-item, .recommend-video-card, .video-page-card-small, .bili-cover-card, .vui_video_card, .bili-dyn-card-video, .video-pod__item, .list-item';
-const CARD_HOST_SELECTOR = '.upload-video-card, upload-video-card, .bili-video-card, bili-video-card, .feed-card, .video-card, .small-item, .recommend-video-card, .video-page-card-small, .bili-cover-card, .vui_video_card, .bili-dyn-card-video, .video-pod__item, .list-item';
+const WATCH_PANEL_PLAYER_BOUNDARY_SELECTOR = '#bilibili-player, .bpx-player-container, .bilibili-player, .player-wrap, .player-container';
+const WATCH_PANEL_LEFT_COLUMN_SELECTOR = '#viewbox_report, .video-info-container, .video-info, .left-container, .playlist-container--left';
+const VIDEO_LINK_SELECTOR = 'a[href*="/video/BV"], a[href*="bvid="]';
+const CARD_CONTAINER_SELECTOR = '.bili-video-card, .feed-card, .video-card, .fav-video-card, .media-card, .small-item, .recommend-video-card, .video-page-card-small, .bili-cover-card, .vui_video_card, .bili-dyn-card-video, .video-pod__item, .list-item';
+const CARD_HOST_SELECTOR = '.upload-video-card, upload-video-card, .bili-video-card, bili-video-card, .feed-card, .video-card, .fav-video-card, .media-card, .small-item, .recommend-video-card, .video-page-card-small, .bili-cover-card, .vui_video_card, .bili-dyn-card-video, .video-pod__item, .list-item';
 const CARD_META_ROW_SELECTOR = '.bili-video-card__info--bottom, .bili-video-card__stats, .video-card__stats, .meta, .bili-video-card__subtitle, [class*="video-card__stats"], [class*="info--bottom"], [class*="info-bottom"], [class*="video-meta"], [class*="subtitle"]';
 const CARD_META_TEXT_SELECTOR = '.time, [class*="date"], [class*="pubdate"], [class*="publish"], [class*="time"], [class*="subtitle"]';
 const CARD_TITLE_SELECTOR = '.bili-video-card__info--tit, .bili-video-card__title, .title, [class*="title"], [class*="tit"]';
 const CARD_COVER_SELECTOR = '.bili-video-card__image, .bili-video-card__cover, .video-card__cover, .recommend-video-card__cover, .bili-cover-card__image, .vui_video_card__cover, .cover, .pic, .image, [class*="cover"], [class*="image"], [class*="thumb"], [class*="thumbnail"]';
 const CARD_COVER_MEDIA_SELECTOR = 'img, picture, video, canvas, source';
+const LIST_PAGE_CARD_HOST_SELECTOR = '.watchlater-list .video-card, .watchlater-list-container .video-card, .fav-video-list .small-item, .favlist-main .small-item, .fav-main .small-item, .fav-list .small-item, .fav-video-card, .media-card';
+const LIST_PAGE_CARD_ROW_SELECTOR = '.info__bottom, .bili-video-card__subtitle, .video-card__stats, .fav-video-card__meta, .media-card__meta, .meta';
 
 const WATCH_PANEL_ID = 'bb-watch-panel';
 const COLLECTION_CONTROLS_CLASS = 'bb-collection-controls';
@@ -56,6 +60,10 @@ const THUMBNAIL_BADGE_HOST_CLASS = 'bb-watch-badge-host';
 const CARD_WATCH_TOGGLE_CLASS = 'bb-watch-card-toggle';
 const CARD_WATCH_TOGGLE_ROW_CLASS = 'bb-watch-card-row';
 const CARD_WATCH_TOGGLE_ROW_GENERATED_CLASS = 'bb-watch-card-row--generated';
+const WATCH_PANEL_INLINE_FALLBACK_WIDTH = 388;
+const WATCH_PANEL_INLINE_GAP = 24;
+const WATCH_PANEL_INLINE_EDGE_PADDING = 8;
+const WATCH_PANEL_META_MAX_INLINE_OCCUPANCY = 0.58;
 const BADGE_HOST_MIN_WIDTH = 96;
 const BADGE_HOST_MIN_HEIGHT = 54;
 
@@ -105,8 +113,25 @@ function parseBvidFromUrl(url) {
     return '';
   }
 
-  const match = url.match(/\/video\/(BV[0-9A-Za-z]+)/);
-  return normalizeBvid(match ? match[1] : '');
+  const videoPathMatch = url.match(/\/video\/(BV[0-9A-Za-z]+)/);
+
+  if (videoPathMatch) {
+    return normalizeBvid(videoPathMatch[1]);
+  }
+
+  try {
+    const parsedUrl = new URL(url, location.href);
+    const queryBvid = parsedUrl.searchParams.get('bvid');
+
+    if (queryBvid) {
+      return normalizeBvid(queryBvid);
+    }
+  } catch (error) {
+    // 相对路径或异常链接继续走兜底正则。
+  }
+
+  const queryMatch = url.match(/[?&#]bvid=(BV[0-9A-Za-z]+)/i);
+  return normalizeBvid(queryMatch ? queryMatch[1] : '');
 }
 
 function clampProgress(progress) {
@@ -229,8 +254,21 @@ function getRecordProgress(record) {
   );
 }
 
+function isListPlaybackPage() {
+  if (location.hostname !== 'www.bilibili.com') {
+    return false;
+  }
+
+  return (
+    /^\/list\/(?:watchlater|ml\d+)/.test(location.pathname) ||
+    /^\/medialist\/play\/(?:watchlater|ml\d+)/.test(location.pathname)
+  );
+}
+
 function isVideoPage() {
-  return /\/video\/BV[0-9A-Za-z]+/.test(location.href);
+  return /\/video\/BV[0-9A-Za-z]+/.test(location.href) || (
+    isListPlaybackPage() && Boolean(getCurrentVideoBvid())
+  );
 }
 
 function isSpacePage() {
@@ -241,8 +279,34 @@ function isSearchPage() {
   return location.hostname === 'search.bilibili.com';
 }
 
+function isSpaceFavoritePage() {
+  return location.hostname === 'space.bilibili.com' && /\/favlist\/?$/.test(location.pathname);
+}
+
+function isWatchLaterPage() {
+  return location.hostname === 'www.bilibili.com' && (
+    location.pathname === '/watchlater/list' ||
+    location.pathname === '/watchlater/list/' ||
+    location.pathname === '/list/watchlater' ||
+    location.pathname === '/list/watchlater/' ||
+    location.pathname === '/medialist/play/watchlater' ||
+    location.pathname === '/medialist/play/watchlater/'
+  );
+}
+
+function isFavoritePage() {
+  return location.hostname === 'www.bilibili.com' && (
+    /^\/list\/ml\d+\/?$/.test(location.pathname) ||
+    /^\/medialist\/play\/ml\d+\/?$/.test(location.pathname)
+  );
+}
+
+function isListCardPage() {
+  return isWatchLaterPage() || isFavoritePage() || isSpaceFavoritePage();
+}
+
 function supportsCardWatchToggle() {
-  return isSpacePage() || isSearchPage();
+  return isSpacePage() || isSearchPage() || isListCardPage();
 }
 
 function getCurrentVideoBvid() {
@@ -684,21 +748,95 @@ async function clearCurrentVideoRecord() {
   }
 }
 
-function renderWatchPanel() {
-  const panel = document.getElementById(WATCH_PANEL_ID);
+function getRecordSeekPosition(record) {
+  if (!record || typeof record !== 'object') {
+    return 0;
+  }
+
+  const lastPosition = Number(record.lastPosition);
+
+  if (!Number.isFinite(lastPosition) || lastPosition <= 0) {
+    return 0;
+  }
+
+  const duration = Number(record.duration);
+
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return Math.round(lastPosition);
+  }
+
+  return Math.round(Math.min(lastPosition, Math.max(duration - 1, 0)));
+}
+
+function formatWatchTime(seconds) {
+  const normalizedSeconds = Math.max(0, Math.round(Number(seconds) || 0));
+  const hours = Math.floor(normalizedSeconds / 3600);
+  const minutes = Math.floor((normalizedSeconds % 3600) / 60);
+  const remainingSeconds = normalizedSeconds % 60;
+  const paddedMinutes = hours > 0 ? String(minutes).padStart(2, '0') : String(minutes);
+  const paddedSeconds = String(remainingSeconds).padStart(2, '0');
+
+  return hours > 0
+    ? `${hours}:${paddedMinutes}:${paddedSeconds}`
+    : `${paddedMinutes}:${paddedSeconds}`;
+}
+
+function getCurrentPlayerSeekPosition(record = state.watch.currentRecord) {
+  const player = state.watch.player || getCurrentVideoElement();
+  const seekPosition = getRecordSeekPosition(record);
+
+  if (!player || seekPosition <= 0) {
+    return 0;
+  }
+
+  const duration = Number(player.duration);
+
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return 0;
+  }
+
+  return Math.min(seekPosition, Math.max(duration - 1, 0));
+}
+
+function jumpToCurrentWatchProgress() {
+  const player = state.watch.player || getCurrentVideoElement();
+  const seekPosition = getCurrentPlayerSeekPosition();
+
+  if (!player || seekPosition <= 0) {
+    return;
+  }
+
+  try {
+    player.currentTime = seekPosition;
+  } catch (error) {
+    console.warn('[Bilibili-Boost] 跳转到已看进度失败', error);
+  }
+}
+
+function renderWatchPanel(panelElement = document.getElementById(WATCH_PANEL_ID)) {
+  const panel = panelElement;
 
   if (!panel) {
     return;
   }
 
   const statusElement = panel.querySelector('.bb-watch-panel__status');
+  const jumpButton = panel.querySelector('[data-role="jump-progress"]');
   const markButton = panel.querySelector('[data-role="mark-complete"]');
   const clearButton = panel.querySelector('[data-role="clear-record"]');
   const status = formatWatchStatus(state.watch.currentRecord);
+  const seekPosition = getCurrentPlayerSeekPosition();
 
   if (statusElement) {
     statusElement.textContent = status.text;
     statusElement.dataset.status = status.status;
+  }
+
+  if (jumpButton) {
+    jumpButton.disabled = seekPosition <= 0;
+    jumpButton.title = seekPosition > 0
+      ? `跳转到上次已看位置 ${formatWatchTime(seekPosition)}`
+      : '暂无可跳转的已看进度';
   }
 
   if (markButton) {
@@ -719,31 +857,578 @@ function removeWatchPanel() {
   }
 }
 
-function findWatchPanelAnchor() {
-  const titleElement = document.querySelector(WATCH_PANEL_TARGET_SELECTOR);
+function isStableWatchTitleElement(element) {
+  if (!(element instanceof HTMLElement) || !element.isConnected) {
+    return false;
+  }
+
+  if (element.closest(`#${WATCH_PANEL_ID}`)) {
+    return false;
+  }
+
+  if (element.closest('[class*="popover"], [class*="tooltip"], [class*="dropdown"], [class*="dialog"]')) {
+    return false;
+  }
+
+  return Boolean(normalizeInlineText(element.textContent || element.getAttribute('title') || ''));
+}
+
+function isVisibleWatchElement(element) {
+  if (!(element instanceof HTMLElement) || !element.isConnected) {
+    return false;
+  }
+
+  const rect = element.getBoundingClientRect();
+
+  return rect.width > 0 && rect.height > 0;
+}
+
+function isWatchPanelMetaCandidate(element, titleElement) {
+  if (!(element instanceof HTMLElement) || !isVisibleWatchElement(element)) {
+    return false;
+  }
+
+  if (element.closest(`#${WATCH_PANEL_ID}`)) {
+    return false;
+  }
+
+  if (element.closest('[class*="popover"], [class*="tooltip"], [class*="dropdown"], [class*="dialog"]')) {
+    return false;
+  }
+
+  if (titleElement && (element === titleElement || element.contains(titleElement))) {
+    return false;
+  }
+
+  if (element.querySelector(WATCH_PANEL_TARGET_SELECTOR)) {
+    return false;
+  }
+
+  if (!normalizeInlineText(element.textContent || '')) {
+    return false;
+  }
+
+  if (titleElement instanceof HTMLElement && isVisibleWatchElement(titleElement)) {
+    const titleRect = titleElement.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+
+    if (elementRect.bottom < titleRect.bottom - 2) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function collectWatchPanelMetaCandidates(containerElement) {
+  if (!(containerElement instanceof HTMLElement)) {
+    return [];
+  }
+
+  const candidates = [
+    ...Array.from(containerElement.querySelectorAll(WATCH_PANEL_META_SELECTOR)),
+    ...Array.from(containerElement.querySelectorAll(WATCH_PANEL_META_FALLBACK_SELECTOR)).flatMap((fallbackElement) => [
+      fallbackElement.closest(WATCH_PANEL_META_SELECTOR),
+      fallbackElement.parentElement,
+      fallbackElement
+    ])
+  ].filter((candidate) => candidate instanceof HTMLElement);
+
+  return Array.from(new Set(candidates));
+}
+
+function findWatchPanelMetaElement(containerElement, titleElement) {
+  const titleRect = titleElement instanceof HTMLElement && isVisibleWatchElement(titleElement)
+    ? titleElement.getBoundingClientRect()
+    : null;
+
+  return collectWatchPanelMetaCandidates(containerElement)
+    .filter((candidate) => isWatchPanelMetaCandidate(candidate, titleElement))
+    .sort((firstCandidate, secondCandidate) => {
+      if (!titleRect) {
+        return 0;
+      }
+
+      const firstRect = firstCandidate.getBoundingClientRect();
+      const secondRect = secondCandidate.getBoundingClientRect();
+      const firstDistance = Math.abs(firstRect.top - titleRect.bottom);
+      const secondDistance = Math.abs(secondRect.top - titleRect.bottom);
+
+      return firstDistance - secondDistance;
+    })[0] || null;
+}
+
+function findWatchPanelContextInContainer(containerElement) {
+  if (!(containerElement instanceof HTMLElement) || !isVisibleWatchElement(containerElement)) {
+    return null;
+  }
+
+  const titleElement = Array.from(containerElement.querySelectorAll(WATCH_PANEL_TARGET_SELECTOR))
+    .find((candidate) => isStableWatchTitleElement(candidate) && isVisibleWatchElement(candidate));
+  const resolvedMetaElement = findWatchPanelMetaElement(containerElement, titleElement);
+
+  if (!titleElement && !resolvedMetaElement) {
+    return null;
+  }
+
+  return {
+    containerElement,
+    titleElement: titleElement || null,
+    metaElement: resolvedMetaElement || null
+  };
+}
+
+function findWatchPanelTitleElement() {
+  const stableSelectors = [
+    '#viewbox_report h1',
+    '.video-info-title',
+    'h1.video-title',
+    '.video-info-container h1[class*="title"]',
+    '.left-container h1[class*="title"]',
+    '.playlist-container--left h1'
+  ];
+
+  for (const selector of stableSelectors) {
+    const titleElement = document.querySelector(selector);
+
+    if (isStableWatchTitleElement(titleElement)) {
+      return titleElement;
+    }
+  }
+
+  return Array.from(document.querySelectorAll(WATCH_PANEL_TARGET_SELECTOR))
+    .find((titleElement) => isStableWatchTitleElement(titleElement)) || null;
+}
+
+function findWatchPanelContext() {
+  const stableContainerSelectors = [
+    '#viewbox_report',
+    '.video-info-container',
+    '.video-info',
+    '.left-container',
+    '.playlist-container--left'
+  ];
+
+  for (const selector of stableContainerSelectors) {
+    const containerContext = findWatchPanelContextInContainer(document.querySelector(selector));
+
+    if (containerContext && containerContext.titleElement) {
+      return containerContext;
+    }
+  }
+
+  const titleElement = findWatchPanelTitleElement();
 
   if (titleElement && titleElement.parentElement) {
-    const scopedMeta = titleElement.parentElement.querySelector(WATCH_PANEL_META_SELECTOR);
+    const titleContainer = titleElement.closest('#viewbox_report') || titleElement.parentElement;
+    const scopedMeta = findWatchPanelMetaElement(titleContainer, titleElement);
 
     if (scopedMeta && scopedMeta !== titleElement) {
-      return scopedMeta;
+      return {
+        containerElement: titleContainer,
+        titleElement,
+        metaElement: scopedMeta
+      };
     }
 
-    const scopedFallback = titleElement.parentElement.querySelector(WATCH_PANEL_META_FALLBACK_SELECTOR);
-
-    if (scopedFallback) {
-      return scopedFallback.closest(WATCH_PANEL_META_SELECTOR) || scopedFallback.parentElement || scopedFallback;
-    }
+    return {
+      containerElement: titleContainer,
+      titleElement,
+      metaElement: null
+    };
   }
 
   const globalMeta = document.querySelector(WATCH_PANEL_META_SELECTOR);
 
   if (globalMeta) {
-    return globalMeta;
+    return {
+      containerElement: globalMeta.closest('#viewbox_report') || globalMeta.parentElement || globalMeta,
+      titleElement: null,
+      metaElement: globalMeta
+    };
   }
 
   const globalFallback = document.querySelector(WATCH_PANEL_META_FALLBACK_SELECTOR);
-  return globalFallback ? globalFallback.parentElement || globalFallback : null;
+
+  if (globalFallback) {
+    return {
+      containerElement: globalFallback.parentElement || globalFallback,
+      titleElement: null,
+      metaElement: globalFallback
+    };
+  }
+
+  return null;
+}
+
+function getDocumentVideoTitle() {
+  return normalizeInlineText(document.title.replace(/_哔哩哔哩.*$/, ''));
+}
+
+function getTextVisualWeight(text) {
+  return Array.from(normalizeInlineText(text || '')).reduce((weight, char) => (
+    weight + (/[\u3000-\u9fff\uff00-\uffef]/.test(char) ? 2 : 1)
+  ), 0);
+}
+
+function isWatchPanelTitleElement(element) {
+  return element instanceof HTMLElement && (
+    element.matches(WATCH_PANEL_TARGET_SELECTOR) ||
+    element.tagName === 'H1'
+  );
+}
+
+function getWatchPanelTitleText(element) {
+  if (!isWatchPanelTitleElement(element)) {
+    return '';
+  }
+
+  const titleCandidates = [
+    element.getAttribute('title'),
+    element.getAttribute('aria-label'),
+    element.textContent,
+    getDocumentVideoTitle()
+  ].map((text) => normalizeInlineText(text || ''));
+
+  return titleCandidates.reduce((longestText, currentText) => (
+    getTextVisualWeight(currentText) > getTextVisualWeight(longestText) ? currentText : longestText
+  ), '');
+}
+
+function measureWatchPanelTextWidth(element) {
+  if (!(element instanceof HTMLElement)) {
+    return 0;
+  }
+
+  const clonedElement = element.cloneNode(true);
+  const panel = clonedElement.querySelector && clonedElement.querySelector(`#${WATCH_PANEL_ID}`);
+
+  if (panel) {
+    panel.remove();
+  }
+
+  const textCandidates = [
+    element.getAttribute('title'),
+    element.getAttribute('aria-label'),
+    clonedElement.textContent,
+    isWatchPanelTitleElement(element) ? getWatchPanelTitleText(element) : ''
+  ].map((text) => normalizeInlineText(text || ''));
+  const text = textCandidates.reduce((longestText, currentText) => (
+    currentText.length > longestText.length ? currentText : longestText
+  ), '');
+
+  if (!text) {
+    return 0;
+  }
+
+  const style = window.getComputedStyle(element);
+  const measuringElement = document.createElement('span');
+  measuringElement.textContent = text;
+  measuringElement.style.position = 'fixed';
+  measuringElement.style.left = '-9999px';
+  measuringElement.style.top = '-9999px';
+  measuringElement.style.visibility = 'hidden';
+  measuringElement.style.whiteSpace = 'nowrap';
+  measuringElement.style.fontFamily = style.fontFamily;
+  measuringElement.style.fontSize = style.fontSize;
+  measuringElement.style.fontWeight = style.fontWeight;
+  measuringElement.style.fontStyle = style.fontStyle;
+  measuringElement.style.letterSpacing = style.letterSpacing;
+  document.body.appendChild(measuringElement);
+
+  try {
+    return Math.ceil(measuringElement.getBoundingClientRect().width);
+  } finally {
+    measuringElement.remove();
+  }
+}
+
+function getWatchPanelMeasuredSize(panel) {
+  if (!(panel instanceof HTMLElement)) {
+    return {
+      width: WATCH_PANEL_INLINE_FALLBACK_WIDTH,
+      height: 32
+    };
+  }
+
+  const clonedPanel = panel.cloneNode(true);
+  clonedPanel.removeAttribute('id');
+  clonedPanel.className = 'bb-watch-panel bb-watch-panel--inline';
+  clonedPanel.style.position = 'fixed';
+  clonedPanel.style.left = '-9999px';
+  clonedPanel.style.top = '-9999px';
+  clonedPanel.style.visibility = 'hidden';
+  clonedPanel.style.width = 'max-content';
+  clonedPanel.style.maxWidth = 'none';
+  clonedPanel.style.pointerEvents = 'none';
+  document.body.appendChild(clonedPanel);
+
+  try {
+    const rect = clonedPanel.getBoundingClientRect();
+
+    return {
+      width: Math.ceil(rect.width) || WATCH_PANEL_INLINE_FALLBACK_WIDTH,
+      height: Math.ceil(rect.height) || 32
+    };
+  } finally {
+    clonedPanel.remove();
+  }
+}
+
+function getTextNodeContentRight(textNode) {
+  if (!textNode || !normalizeInlineText(textNode.textContent)) {
+    return 0;
+  }
+
+  const range = document.createRange();
+  range.selectNodeContents(textNode);
+  let contentRight = 0;
+
+  Array.from(range.getClientRects()).forEach((rect) => {
+    if (rect.width > 0 && rect.height > 0) {
+      contentRight = Math.max(contentRight, rect.right);
+    }
+  });
+
+  if (range.detach) {
+    range.detach();
+  }
+
+  return contentRight;
+}
+
+function shouldMeasureElementOwnRect(element, rootElement) {
+  if (!(element instanceof Element) || element === rootElement || element.id === WATCH_PANEL_ID) {
+    return false;
+  }
+
+  if (element.closest(`#${WATCH_PANEL_ID}`)) {
+    return false;
+  }
+
+  const normalizedText = normalizeInlineText(element.textContent);
+
+  if (normalizedText) {
+    return false;
+  }
+
+  return element.getClientRects().length > 0;
+}
+
+function getWatchPanelLineContentRight(element) {
+  if (!(element instanceof HTMLElement)) {
+    return 0;
+  }
+
+  const elementRect = element.getBoundingClientRect();
+  let contentRight = 0;
+  const walker = document.createTreeWalker(
+    element,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+    {
+      acceptNode(node) {
+        if (node instanceof HTMLElement && (node.id === WATCH_PANEL_ID || node.closest(`#${WATCH_PANEL_ID}`))) {
+          return NodeFilter.FILTER_REJECT;
+        }
+
+        if (node.nodeType === Node.TEXT_NODE && !normalizeInlineText(node.textContent)) {
+          return NodeFilter.FILTER_REJECT;
+        }
+
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    }
+  );
+
+  let currentNode = walker.nextNode();
+
+  while (currentNode) {
+    if (currentNode.nodeType === Node.TEXT_NODE) {
+      contentRight = Math.max(contentRight, getTextNodeContentRight(currentNode));
+    } else if (shouldMeasureElementOwnRect(currentNode, element)) {
+      Array.from(currentNode.getClientRects()).forEach((rect) => {
+        if (rect.width > 0 && rect.height > 0) {
+          contentRight = Math.max(contentRight, rect.right);
+        }
+      });
+    }
+
+    currentNode = walker.nextNode();
+  }
+
+  if (contentRight > 0) {
+    return contentRight;
+  }
+
+  return elementRect.left + measureWatchPanelTextWidth(element);
+}
+
+function getWatchPanelFullTextContentRight(element) {
+  if (!(element instanceof HTMLElement)) {
+    return 0;
+  }
+
+  const elementRect = element.getBoundingClientRect();
+  const textWidth = measureWatchPanelTextWidth(element);
+
+  return textWidth ? elementRect.left + textWidth : 0;
+}
+
+function getVisibleElementRect(element) {
+  if (!(element instanceof HTMLElement) || !element.isConnected) {
+    return null;
+  }
+
+  const rect = element.getBoundingClientRect();
+
+  return rect.width > 0 && rect.height > 0 ? rect : null;
+}
+
+function getWatchPanelPlayerBoundaryRect() {
+  const playerElement = getCurrentVideoElement();
+
+  if (!(playerElement instanceof HTMLElement)) {
+    return null;
+  }
+
+  const playerBoundaryElement = playerElement.closest(WATCH_PANEL_PLAYER_BOUNDARY_SELECTOR);
+  return getVisibleElementRect(playerBoundaryElement) || getVisibleElementRect(playerElement);
+}
+
+function getWatchPanelInlineRightLimit(context, element, panelSize) {
+  const elementRect = element.getBoundingClientRect();
+  const viewportRight = Math.max(0, window.innerWidth - WATCH_PANEL_INLINE_EDGE_PADDING);
+  const minRight = elementRect.left + WATCH_PANEL_INLINE_GAP + panelSize.width;
+  const candidates = [];
+  const addCandidate = (rect) => {
+    if (!rect) {
+      return;
+    }
+
+    const right = Math.min(rect.right, viewportRight);
+
+    if (right > minRight) {
+      candidates.push(right);
+    }
+  };
+
+  addCandidate(getWatchPanelPlayerBoundaryRect());
+  addCandidate(getVisibleElementRect(element.closest(WATCH_PANEL_LEFT_COLUMN_SELECTOR)));
+  addCandidate(getVisibleElementRect(context.containerElement));
+
+  if (candidates.length === 0) {
+    return 0;
+  }
+
+  return Math.min(...candidates);
+}
+
+function getWatchPanelInlinePlacement(element, context, panelSize, options = {}) {
+  if (!(element instanceof HTMLElement)) {
+    return null;
+  }
+
+  const elementRects = Array.from(element.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+  const elementRect = elementRects[0] || element.getBoundingClientRect();
+  const rightLimit = getWatchPanelInlineRightLimit(context, element, panelSize);
+  const contentRight = options.useFullTextWidth
+    ? getWatchPanelFullTextContentRight(element)
+    : getWatchPanelLineContentRight(element);
+  const lineLeft = Math.max(0, elementRect.left);
+  const lineWidth = Math.max(0, rightLimit - lineLeft);
+  const contentWidth = Math.max(0, contentRight - lineLeft);
+
+  if (!elementRect.width || !elementRect.height || !rightLimit || !contentRight || !lineWidth) {
+    return null;
+  }
+
+  if (contentRight + WATCH_PANEL_INLINE_GAP + panelSize.width > rightLimit) {
+    return null;
+  }
+
+  if (typeof options.maxOccupancy === 'number' && contentWidth / lineWidth > options.maxOccupancy) {
+    return null;
+  }
+
+  return {
+    left: Math.round(window.scrollX + rightLimit - panelSize.width),
+    top: Math.round(window.scrollY + elementRect.top + ((elementRect.height - panelSize.height) / 2))
+  };
+}
+
+function getWatchPanelPlacement(panel, context) {
+  const panelSize = getWatchPanelMeasuredSize(panel);
+
+  const metaPlacement = getWatchPanelInlinePlacement(
+    context.metaElement,
+    context,
+    panelSize,
+    { maxOccupancy: WATCH_PANEL_META_MAX_INLINE_OCCUPANCY }
+  );
+
+  if (metaPlacement) {
+    return {
+      ...metaPlacement,
+      mode: 'meta'
+    };
+  }
+
+  const titlePlacement = getWatchPanelInlinePlacement(
+    context.titleElement,
+    context,
+    panelSize,
+    { useFullTextWidth: true }
+  );
+
+  if (titlePlacement) {
+    return {
+      ...titlePlacement,
+      mode: 'title'
+    };
+  }
+
+  return {
+    mode: 'block'
+  };
+}
+
+function resetWatchPanelPosition(panel) {
+  panel.style.left = '';
+  panel.style.top = '';
+  panel.style.width = '';
+}
+
+function getWatchPanelBlockAnchor(context) {
+  return context.containerElement || context.metaElement || context.titleElement;
+}
+
+function placeWatchPanel(panel, context) {
+  const placement = getWatchPanelPlacement(panel, context);
+
+  if (placement.mode !== 'block') {
+    panel.className = `bb-watch-panel bb-watch-panel--inline bb-watch-panel--${placement.mode}`;
+    panel.style.left = `${placement.left}px`;
+    panel.style.top = `${placement.top}px`;
+    panel.style.width = 'max-content';
+
+    if (panel.parentElement !== document.body) {
+      document.body.appendChild(panel);
+    }
+
+    return;
+  }
+
+  const blockAnchor = getWatchPanelBlockAnchor(context);
+  resetWatchPanelPosition(panel);
+  panel.className = 'bb-watch-panel bb-watch-panel--block';
+
+  if (!blockAnchor || !blockAnchor.parentElement) {
+    return;
+  }
+
+  if (panel.parentElement !== blockAnchor.parentElement || panel.previousElementSibling !== blockAnchor) {
+    blockAnchor.parentElement.insertBefore(panel, blockAnchor.nextSibling);
+  }
 }
 
 function ensureWatchPanel() {
@@ -752,9 +1437,9 @@ function ensureWatchPanel() {
     return;
   }
 
-  const targetAnchor = findWatchPanelAnchor();
+  const panelContext = findWatchPanelContext();
 
-  if (!targetAnchor) {
+  if (!panelContext || !panelContext.containerElement) {
     return;
   }
 
@@ -770,6 +1455,13 @@ function ensureWatchPanel() {
 
     const actions = document.createElement('div');
     actions.className = 'bb-watch-panel__actions';
+
+    const jumpButton = document.createElement('button');
+    jumpButton.type = 'button';
+    jumpButton.className = 'bb-watch-panel__button';
+    jumpButton.dataset.role = 'jump-progress';
+    jumpButton.textContent = '跳到进度';
+    jumpButton.addEventListener('click', jumpToCurrentWatchProgress);
 
     const markButton = document.createElement('button');
     markButton.type = 'button';
@@ -788,17 +1480,15 @@ function ensureWatchPanel() {
       void clearCurrentVideoRecord();
     });
 
+    actions.appendChild(jumpButton);
     actions.appendChild(markButton);
     actions.appendChild(clearButton);
     panel.appendChild(statusElement);
     panel.appendChild(actions);
   }
 
-  if (panel.parentElement !== targetAnchor || targetAnchor.lastElementChild !== panel) {
-    targetAnchor.appendChild(panel);
-  }
-
-  renderWatchPanel();
+  renderWatchPanel(panel);
+  placeWatchPanel(panel, panelContext);
 }
 
 function getCurrentVideoElement() {
@@ -922,6 +1612,7 @@ function handleVideoEnded() {
 }
 
 function handleVideoLoadedMetadata() {
+  renderWatchPanel();
   void persistWatchProgress(false, true);
 }
 
@@ -937,6 +1628,10 @@ function handleVisibilityChange() {
   if (document.hidden) {
     void persistWatchProgress(false, true);
   }
+}
+
+function handleWindowResize() {
+  scheduleRefresh(80);
 }
 
 function resolveBadgeHost(anchorElement) {
@@ -962,10 +1657,18 @@ function resolveBadgeHost(anchorElement) {
     }
   }
 
-  return anchorElement.closest(CARD_CONTAINER_SELECTOR) || anchorElement;
+  return findBadgeCoverHost(anchorElement, null);
 }
 
 function resolveCardHost(anchorElement) {
+  if (isListCardPage()) {
+    const listPageCardHost = anchorElement.closest(LIST_PAGE_CARD_HOST_SELECTOR);
+
+    if (listPageCardHost) {
+      return listPageCardHost;
+    }
+  }
+
   return anchorElement.closest(CARD_HOST_SELECTOR) || anchorElement.closest(CARD_CONTAINER_SELECTOR) || anchorElement;
 }
 
@@ -1097,6 +1800,10 @@ function collectWatchCardTargets() {
     const cardHostElement = resolveCardHost(anchorElement);
     const badgeHostElement = resolveBadgeHost(anchorElement);
 
+    if (!badgeHostElement) {
+      return;
+    }
+
     if (seenHosts.has(cardHostElement)) {
       return;
     }
@@ -1191,6 +1898,14 @@ function findCardWatchToggleRow(hostElement) {
 
   if (existingRow) {
     return existingRow;
+  }
+
+  if (isListCardPage()) {
+    const listPageRow = hostElement.querySelector(LIST_PAGE_CARD_ROW_SELECTOR);
+
+    if (listPageRow) {
+      return listPageRow;
+    }
   }
 
   const rowCandidates = Array.from(hostElement.querySelectorAll(CARD_META_ROW_SELECTOR));
@@ -1591,6 +2306,7 @@ function registerRuntimeListeners() {
 
   document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('pagehide', handlePageHide);
+  window.addEventListener('resize', handleWindowResize);
 }
 
 async function init() {
