@@ -72,18 +72,25 @@ const WATCH_PANEL_META_MAX_INLINE_OCCUPANCY = 0.58;
 const WATCH_PANEL_DEBUG = false;
 const BADGE_HOST_MIN_WIDTH = 96;
 const BADGE_HOST_MIN_HEIGHT = 54;
+const BADGE_HOST_MAX_MEDIA_AREA_RATIO = 3.2;
+const COMPACT_BADGE_MAX_WIDTH = 180;
+const COMPACT_BADGE_MAX_HEIGHT = 105;
 
 const AUTO_SAVE_PROGRESS_STEP = 5;
 const AUTO_SAVE_INTERVAL_MS = 15000;
 const BOOTSTRAP_REFRESH_INTERVAL_MS = 1000;
 const BOOTSTRAP_REFRESH_MAX_ATTEMPTS = 16;
 const ROUTE_WATCH_INTERVAL_MS = 600;
+const DYNAMIC_CARD_HOVER_REFRESH_INTERVAL_MS = 500;
+const DYNAMIC_CARD_REFRESH_DELAYS_MS = [80, 220, 520];
 
 const state = {
   settings: { ...DEFAULT_SETTINGS },
   lastUrl: location.href,
   refreshTimer: null,
   routeTimer: null,
+  dynamicCardObserver: null,
+  lastDynamicCardHoverRefreshAt: 0,
   bootstrapTimer: null,
   bootstrapStartTimer: null,
   bootstrapAttempts: 0,
@@ -1344,6 +1351,40 @@ function handleWindowResize() {
   scheduleRefresh(80);
 }
 
+function isElementVisibleForWatchMarker(element) {
+  if (!(element instanceof HTMLElement) || !element.isConnected) {
+    return false;
+  }
+
+  const rect = element.getBoundingClientRect();
+
+  if (rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+
+  let currentElement = element;
+
+  while (currentElement instanceof HTMLElement) {
+    if (currentElement.hidden || currentElement.getAttribute('aria-hidden') === 'true') {
+      return false;
+    }
+
+    const style = window.getComputedStyle(currentElement);
+
+    if (
+      style.display === 'none' ||
+      style.visibility === 'hidden' ||
+      Number(style.opacity) === 0
+    ) {
+      return false;
+    }
+
+    currentElement = currentElement.parentElement;
+  }
+
+  return true;
+}
+
 function resolveBadgeHost(anchorElement, cardHostElement = resolveCardHost(anchorElement)) {
   if (cardHostElement) {
     const coverLink = Array.from(cardHostElement.querySelectorAll(VIDEO_LINK_SELECTOR)).find((linkElement) => {
@@ -1387,6 +1428,9 @@ function findBadgeCoverHost(rootElement, cardHostElement) {
 
   const candidateElements = [];
   const seenElements = new Set();
+  const mediaElement = rootElement.matches(CARD_COVER_MEDIA_SELECTOR)
+    ? rootElement
+    : rootElement.querySelector(CARD_COVER_MEDIA_SELECTOR);
   const collectCandidate = (candidateElement) => {
     if (!(candidateElement instanceof HTMLElement) || seenElements.has(candidateElement)) {
       return;
@@ -1401,8 +1445,6 @@ function findBadgeCoverHost(rootElement, cardHostElement) {
 
   collectCandidate(rootElement);
   Array.from(rootElement.querySelectorAll(CARD_COVER_SELECTOR)).forEach(collectCandidate);
-
-  const mediaElement = rootElement.querySelector(CARD_COVER_MEDIA_SELECTOR);
 
   if (mediaElement instanceof HTMLElement) {
     let ancestorElement = mediaElement.parentElement;
@@ -1440,13 +1482,22 @@ function getBadgeHostScore(candidateElement) {
   }
 
   const rect = candidateElement.getBoundingClientRect();
+  const mediaElement = candidateElement.matches(CARD_COVER_MEDIA_SELECTOR)
+    ? null
+    : candidateElement.querySelector(CARD_COVER_MEDIA_SELECTOR);
+  const mediaRect = mediaElement instanceof HTMLElement ? mediaElement.getBoundingClientRect() : null;
   const classText = typeof candidateElement.className === 'string'
     ? candidateElement.className.toLowerCase()
     : '';
   let score = rect.width * rect.height;
 
-  if (candidateElement.querySelector(CARD_COVER_MEDIA_SELECTOR)) {
+  if (mediaRect && mediaRect.width > 0 && mediaRect.height > 0) {
     score += 20000;
+
+    const areaRatio = (rect.width * rect.height) / (mediaRect.width * mediaRect.height);
+    score -= Math.abs(rect.width - mediaRect.width) * 80;
+    score -= Math.abs(rect.height - mediaRect.height) * 80;
+    score -= Math.max(0, areaRatio - 1) * 12000;
   }
 
   if (/(cover|image|pic|thumb|thumbnail)/.test(classText)) {
@@ -1461,7 +1512,7 @@ function getBadgeHostScore(candidateElement) {
 }
 
 function isValidBadgeHost(candidateElement, cardHostElement) {
-  if (!(candidateElement instanceof HTMLElement) || !candidateElement.isConnected) {
+  if (!isElementVisibleForWatchMarker(candidateElement)) {
     return false;
   }
 
@@ -1483,11 +1534,24 @@ function isValidBadgeHost(candidateElement, cardHostElement) {
     ? candidateElement.className.toLowerCase()
     : '';
   const hasCoverHint = /(cover|image|pic|thumb|thumbnail)/.test(classText);
-  const hasMedia = Boolean(candidateElement.querySelector(CARD_COVER_MEDIA_SELECTOR));
-  const containsTitle = candidateElement !== cardHostElement && Boolean(candidateElement.querySelector(CARD_TITLE_SELECTOR));
+  const mediaElement = candidateElement.querySelector(CARD_COVER_MEDIA_SELECTOR);
+  const hasMedia = Boolean(mediaElement);
+  const containsTitle = Boolean(candidateElement.querySelector(CARD_TITLE_SELECTOR));
 
   if (containsTitle) {
     return false;
+  }
+
+  if (mediaElement instanceof HTMLElement) {
+    const mediaRect = mediaElement.getBoundingClientRect();
+
+    if (mediaRect.width > 0 && mediaRect.height > 0) {
+      const areaRatio = (rect.width * rect.height) / (mediaRect.width * mediaRect.height);
+
+      if (areaRatio > BADGE_HOST_MAX_MEDIA_AREA_RATIO) {
+        return false;
+      }
+    }
   }
 
   return hasCoverHint || hasMedia;
@@ -1500,6 +1564,10 @@ function collectWatchCardTargets() {
   const targets = [];
 
   anchors.forEach((anchorElement) => {
+    if (!isElementVisibleForWatchMarker(anchorElement)) {
+      return;
+    }
+
     const bvid = parseBvidFromUrl(anchorElement.href);
 
     if (!bvid) {
@@ -1510,6 +1578,10 @@ function collectWatchCardTargets() {
     const badgeHostElement = resolveBadgeHost(anchorElement, cardHostElement);
 
     if (!badgeHostElement) {
+      return;
+    }
+
+    if (!isElementVisibleForWatchMarker(cardHostElement) || !isElementVisibleForWatchMarker(badgeHostElement)) {
       return;
     }
 
@@ -1776,6 +1848,30 @@ function renderCardWatchToggle(rowElement, target, record) {
   renderCardWatchToggleState(toggleButton, record);
 }
 
+function shouldUseCompactThumbnailBadge(hostElement) {
+  if (!(hostElement instanceof HTMLElement)) {
+    return false;
+  }
+
+  const rect = hostElement.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0 && (
+    rect.width <= COMPACT_BADGE_MAX_WIDTH ||
+    rect.height <= COMPACT_BADGE_MAX_HEIGHT
+  );
+}
+
+function formatThumbnailBadgeText(status, compact) {
+  if (status.status === 'complete') {
+    return compact ? '看完' : status.text;
+  }
+
+  if (compact && status.status === 'progress') {
+    return status.text.replace(/^已看\s*/, '');
+  }
+
+  return status.text;
+}
+
 function renderThumbnailBadge(hostElement, record) {
   const status = formatWatchStatus(record);
 
@@ -1798,8 +1894,11 @@ function renderThumbnailBadge(hostElement, record) {
   }
 
   hostElement.classList.add(THUMBNAIL_BADGE_HOST_CLASS);
-  badge.textContent = status.text;
+  const compact = shouldUseCompactThumbnailBadge(hostElement);
+  badge.textContent = formatThumbnailBadgeText(status, compact);
   badge.dataset.status = status.status;
+  badge.dataset.compact = compact ? 'true' : 'false';
+  badge.title = status.text;
 }
 
 function renderCardWatchToggles(targets) {
@@ -1976,6 +2075,74 @@ function startRouteWatcher() {
   }, ROUTE_WATCH_INTERVAL_MS);
 }
 
+function nodeHasVideoCardContent(node) {
+  if (!(node instanceof Element)) {
+    return false;
+  }
+
+  if (node.id === WATCH_PANEL_ID || node.classList.contains(THUMBNAIL_BADGE_CLASS)) {
+    return false;
+  }
+
+  return node.matches(VIDEO_LINK_SELECTOR) || Boolean(node.querySelector(VIDEO_LINK_SELECTOR));
+}
+
+function startDynamicCardObserver() {
+  if (state.dynamicCardObserver || !document.body) {
+    return;
+  }
+
+  state.dynamicCardObserver = new MutationObserver((mutations) => {
+    const hasVideoCardChange = mutations.some((mutation) => (
+      (mutation.type === 'attributes' && nodeHasVideoCardContent(mutation.target)) ||
+      Array.from(mutation.addedNodes).some(nodeHasVideoCardContent) ||
+      Array.from(mutation.removedNodes).some(nodeHasVideoCardContent)
+    ));
+
+    if (hasVideoCardChange) {
+      scheduleDynamicCardRefreshBurst();
+    }
+  });
+
+  state.dynamicCardObserver.observe(document.body, {
+    attributes: true,
+    attributeFilter: ['aria-hidden', 'class', 'hidden', 'style'],
+    childList: true,
+    subtree: true
+  });
+}
+
+function scheduleDynamicCardRefreshBurst() {
+  DYNAMIC_CARD_REFRESH_DELAYS_MS.forEach((delay) => {
+    window.setTimeout(() => {
+      scheduleRefresh(0);
+    }, delay);
+  });
+}
+
+function handleDynamicCardPointerOver(event) {
+  if (!state.settings.watchMarkerEnabled) {
+    return;
+  }
+
+  if (!(event.target instanceof Element) || event.target.closest(`#${WATCH_PANEL_ID}`)) {
+    return;
+  }
+
+  if (event.clientY > 160 && !event.target.closest(VIDEO_LINK_SELECTOR)) {
+    return;
+  }
+
+  const now = Date.now();
+
+  if (now - state.lastDynamicCardHoverRefreshAt < DYNAMIC_CARD_HOVER_REFRESH_INTERVAL_MS) {
+    return;
+  }
+
+  state.lastDynamicCardHoverRefreshAt = now;
+  scheduleDynamicCardRefreshBurst();
+}
+
 function registerRuntimeListeners() {
   extensionApi.runtime.onMessage.addListener((message) => {
     if (!message || typeof message.type !== 'string') {
@@ -2022,6 +2189,7 @@ function registerRuntimeListeners() {
   });
 
   document.addEventListener('visibilitychange', handleVisibilityChange);
+  document.addEventListener('pointerover', handleDynamicCardPointerOver, true);
   window.addEventListener('pagehide', handlePageHide);
   window.addEventListener('resize', handleWindowResize);
 }
@@ -2029,6 +2197,7 @@ function registerRuntimeListeners() {
 async function init() {
   await loadSettings();
   startRouteWatcher();
+  startDynamicCardObserver();
   registerRuntimeListeners();
 
   if (document.readyState === 'complete') {

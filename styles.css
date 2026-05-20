@@ -316,3 +316,14 @@
 .bb-watch-badge[data-status="complete"] {
   background: rgba(24, 165, 111, 0.9);
 }
+
+.bb-watch-badge[data-compact="true"] {
+  top: 5px;
+  left: 5px;
+  min-width: 34px;
+  min-height: 18px;
+  max-width: calc(100% - 10px);
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 1;
+}
