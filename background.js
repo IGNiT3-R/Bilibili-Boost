@@ -8,22 +8,30 @@
 
 const extensionApi = globalThis.browser || globalThis.chrome;
 
+if (!globalThis.BilibiliBoostShared && typeof importScripts === 'function') {
+  importScripts('shared.js');
+}
+
+const {
+  DEFAULT_SETTINGS,
+  MIN_VISIBLE_PROGRESS,
+  normalizeBvid,
+  clampProgress,
+  normalizeTimestamp,
+  normalizeNonNegativeInteger,
+  sanitizeCompletionThreshold,
+  normalizeSettings,
+  getRecordCompletionKind,
+  getRecordIncompleteProgress,
+  isCompletedRecord: isRecordEffectivelyCompleted
+} = globalThis.BilibiliBoostShared;
+
 const DB_NAME = 'bilibili_boost';
 const DB_VERSION = 1;
 const WATCH_STORE_NAME = 'watch_history';
 const SETTINGS_KEY = 'settings';
 const EXPORT_SCHEMA_VERSION = 1;
-const MIN_VISIBLE_PROGRESS = 5;
-const DEFAULT_COMPLETE_THRESHOLD = 98;
-const COMPLETE_THRESHOLD_MIN = 90;
-const COMPLETE_THRESHOLD_MAX = 100;
-const MAX_INCOMPLETE_PROGRESS = 99;
-
-const DEFAULT_SETTINGS = {
-  watchMarkerEnabled: true,
-  collectionBoostEnabled: true,
-  completionThreshold: DEFAULT_COMPLETE_THRESHOLD
-};
+const MAX_INCOMPLETE_PROGRESS = globalThis.BilibiliBoostShared.MAX_INCOMPLETE_PROGRESS;
 
 const MESSAGE_TYPES = {
   GET_SETTINGS: 'GET_SETTINGS',
@@ -40,72 +48,6 @@ const MESSAGE_TYPES = {
   WATCH_RECORDS_UPDATED: 'WATCH_RECORDS_UPDATED'
 };
 
-function normalizeBvid(rawValue) {
-  if (typeof rawValue !== 'string') {
-    return '';
-  }
-
-  const match = rawValue.toUpperCase().match(/BV[0-9A-Z]+/);
-  return match ? match[0] : '';
-}
-
-function clampProgress(progress) {
-  const numericValue = Number(progress);
-
-  if (!Number.isFinite(numericValue)) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(100, Math.round(numericValue)));
-}
-
-function normalizeTimestamp(value, fallbackValue) {
-  const numericValue = Number(value);
-
-  if (!Number.isFinite(numericValue) || numericValue <= 0) {
-    return fallbackValue;
-  }
-
-  return Math.round(numericValue);
-}
-
-function normalizeNonNegativeInteger(value, fallbackValue = 0) {
-  const numericValue = Number(value);
-
-  if (!Number.isFinite(numericValue) || numericValue < 0) {
-    return fallbackValue;
-  }
-
-  return Math.round(numericValue);
-}
-
-function sanitizeCompletionThreshold(value) {
-  const numericValue = Number(value);
-
-  if (!Number.isFinite(numericValue)) {
-    return DEFAULT_COMPLETE_THRESHOLD;
-  }
-
-  return Math.max(
-    COMPLETE_THRESHOLD_MIN,
-    Math.min(COMPLETE_THRESHOLD_MAX, Math.round(numericValue))
-  );
-}
-
-function normalizeSettings(rawSettings) {
-  return {
-    ...DEFAULT_SETTINGS,
-    ...(rawSettings || {}),
-    watchMarkerEnabled: rawSettings && Object.prototype.hasOwnProperty.call(rawSettings, 'watchMarkerEnabled')
-      ? Boolean(rawSettings.watchMarkerEnabled)
-      : DEFAULT_SETTINGS.watchMarkerEnabled,
-    collectionBoostEnabled: rawSettings && Object.prototype.hasOwnProperty.call(rawSettings, 'collectionBoostEnabled')
-      ? Boolean(rawSettings.collectionBoostEnabled)
-      : DEFAULT_SETTINGS.collectionBoostEnabled,
-    completionThreshold: sanitizeCompletionThreshold(rawSettings && rawSettings.completionThreshold)
-  };
-}
-
 function shouldPersistSettings(rawSettings, normalizedSettings) {
   if (!rawSettings || typeof rawSettings !== 'object') {
     return true;
@@ -116,105 +58,6 @@ function shouldPersistSettings(rawSettings, normalizedSettings) {
     Boolean(rawSettings.collectionBoostEnabled) !== Boolean(normalizedSettings.collectionBoostEnabled) ||
     Number(rawSettings.completionThreshold) !== normalizedSettings.completionThreshold
   );
-}
-
-function getRecordPlaybackProgress(record) {
-  if (!record || typeof record !== 'object') {
-    return 0;
-  }
-
-  const duration = normalizeNonNegativeInteger(record.duration, 0);
-  const lastPosition = normalizeNonNegativeInteger(record.lastPosition, 0);
-
-  if (duration <= 0 || lastPosition <= 0) {
-    return 0;
-  }
-
-  return clampProgress((lastPosition / duration) * 100);
-}
-
-function isPlaybackCompletionAtEnd(record) {
-  if (!record || typeof record !== 'object') {
-    return false;
-  }
-
-  const duration = normalizeNonNegativeInteger(record.duration, 0);
-  const lastPosition = normalizeNonNegativeInteger(record.lastPosition, 0);
-
-  if (duration <= 0 || lastPosition <= 0) {
-    return false;
-  }
-
-  return lastPosition >= Math.max(duration - 1, 0) || getRecordPlaybackProgress(record) >= 99;
-}
-
-function getRecordCompletionKind(record) {
-  if (!record || !record.completed) {
-    return null;
-  }
-
-  if (
-    record.completionSource === 'manual' ||
-    record.completionSource === 'ended' ||
-    record.completionSource === 'threshold'
-  ) {
-    return record.completionSource;
-  }
-
-  return isPlaybackCompletionAtEnd(record) ? 'ended' : 'threshold';
-}
-
-function getRecordIncompleteProgress(record) {
-  if (!record || typeof record !== 'object') {
-    return 0;
-  }
-
-  const rawMaxProgress = clampProgress(record.maxProgress);
-  const storedIncompleteProgress = Math.min(
-    MAX_INCOMPLETE_PROGRESS,
-    clampProgress(record.lastIncompleteProgress)
-  );
-  const playbackProgress = Math.min(MAX_INCOMPLETE_PROGRESS, getRecordPlaybackProgress(record));
-
-  if (record.completed) {
-    if (
-      getRecordCompletionKind(record) === 'manual' &&
-      storedIncompleteProgress === 0 &&
-      playbackProgress === 0
-    ) {
-      return 0;
-    }
-
-    return Math.max(
-      storedIncompleteProgress,
-      playbackProgress,
-      rawMaxProgress >= 100 ? 0 : Math.min(MAX_INCOMPLETE_PROGRESS, rawMaxProgress)
-    );
-  }
-
-  return Math.max(
-    Math.min(MAX_INCOMPLETE_PROGRESS, rawMaxProgress),
-    storedIncompleteProgress,
-    playbackProgress
-  );
-}
-
-function isRecordEffectivelyCompleted(record, completionThreshold) {
-  if (!record || typeof record !== 'object') {
-    return false;
-  }
-
-  const threshold = sanitizeCompletionThreshold(completionThreshold);
-
-  if (record.completed) {
-    const completionKind = getRecordCompletionKind(record);
-
-    if (completionKind === 'manual' || completionKind === 'ended') {
-      return true;
-    }
-  }
-
-  return getRecordIncompleteProgress(record) >= threshold;
 }
 
 function requestToPromise(request) {
@@ -627,15 +470,24 @@ async function importWatchRecords(payload) {
       ? payload.watchRecords
       : [];
   const uniqueRecords = new Map();
+  let validInputCount = 0;
+  let duplicateCount = 0;
+  let invalidCount = 0;
 
   rawRecords.forEach((rawRecord) => {
     const record = sanitizeImportedWatchRecord(rawRecord);
 
     if (!record) {
+      invalidCount += 1;
       return;
     }
 
+    validInputCount += 1;
     const existingRecord = uniqueRecords.get(record.bvid);
+
+    if (existingRecord) {
+      duplicateCount += 1;
+    }
 
     if (!existingRecord || normalizeTimestamp(record.updatedAt, 0) >= normalizeTimestamp(existingRecord.updatedAt, 0)) {
       uniqueRecords.set(record.bvid, record);
@@ -649,6 +501,7 @@ async function importWatchRecords(payload) {
   }
 
   const appliedRecords = {};
+  let olderRecordSkippedCount = 0;
 
   await withStore('readwrite', async (store) => {
     for (const record of validRecords) {
@@ -657,6 +510,7 @@ async function importWatchRecords(payload) {
       const nextUpdatedAt = normalizeTimestamp(record.updatedAt, 0);
 
       if (currentRecord && currentUpdatedAt > nextUpdatedAt) {
+        olderRecordSkippedCount += 1;
         continue;
       }
 
@@ -671,9 +525,13 @@ async function importWatchRecords(payload) {
 
   return {
     totalCount: rawRecords.length,
+    validInputCount,
     validCount: validRecords.length,
     appliedCount: Object.keys(appliedRecords).length,
-    skippedCount: rawRecords.length - Object.keys(appliedRecords).length
+    skippedCount: rawRecords.length - Object.keys(appliedRecords).length,
+    invalidCount,
+    duplicateCount,
+    olderRecordSkippedCount
   };
 }
 

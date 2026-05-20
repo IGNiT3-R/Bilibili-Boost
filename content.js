@@ -9,6 +9,16 @@
  */
 
 const extensionApi = globalThis.browser || globalThis.chrome;
+const {
+  DEFAULT_SETTINGS,
+  MIN_VISIBLE_PROGRESS,
+  normalizeBvid,
+  parseBvidFromUrl,
+  clampProgress,
+  sanitizeCompletionThreshold,
+  normalizeSettings,
+  getRecordProgress
+} = globalThis.BilibiliBoostShared;
 
 const MESSAGE_TYPES = {
   GET_SETTINGS: 'GET_SETTINGS',
@@ -23,16 +33,6 @@ const MESSAGE_TYPES = {
 };
 
 const SETTINGS_KEY = 'settings';
-const DEFAULT_COMPLETE_THRESHOLD = 98;
-const COMPLETE_THRESHOLD_MIN = 90;
-const COMPLETE_THRESHOLD_MAX = 100;
-const MAX_INCOMPLETE_PROGRESS = 99;
-
-const DEFAULT_SETTINGS = {
-  watchMarkerEnabled: true,
-  collectionBoostEnabled: true,
-  completionThreshold: DEFAULT_COMPLETE_THRESHOLD
-};
 
 const PLAYLIST_HEADER_SELECTOR = '.video-sections-head, .video-pod__header';
 const VIDEO_LIST_BODY_SELECTOR = '.video-pod__body';
@@ -55,21 +55,29 @@ const LIST_PAGE_CARD_ROW_SELECTOR = '.info__bottom, .bili-video-card__subtitle, 
 
 const WATCH_PANEL_ID = 'bb-watch-panel';
 const COLLECTION_CONTROLS_CLASS = 'bb-collection-controls';
+const COLLECTION_TITLE_EXPANDED_CLASS = 'title-expanded';
+const COLLECTION_LIST_EXPANDED_CLASS = 'bb-collection-list-expanded';
 const THUMBNAIL_BADGE_CLASS = 'bb-watch-badge';
 const THUMBNAIL_BADGE_HOST_CLASS = 'bb-watch-badge-host';
 const CARD_WATCH_TOGGLE_CLASS = 'bb-watch-card-toggle';
 const CARD_WATCH_TOGGLE_ROW_CLASS = 'bb-watch-card-row';
 const CARD_WATCH_TOGGLE_ROW_GENERATED_CLASS = 'bb-watch-card-row--generated';
+// 播放页状态面板布局参数：调整前请覆盖短/长标题与短/长元信息四类页面。
 const WATCH_PANEL_INLINE_FALLBACK_WIDTH = 388;
 const WATCH_PANEL_INLINE_GAP = 24;
 const WATCH_PANEL_INLINE_EDGE_PADDING = 8;
+// 元信息行超过该占用比例时，按钮回退到标题行，避免压住 B 站原生声明。
 const WATCH_PANEL_META_MAX_INLINE_OCCUPANCY = 0.58;
+// 仅本地排查播放页按钮位置时改为 true，默认不向控制台输出。
+const WATCH_PANEL_DEBUG = false;
 const BADGE_HOST_MIN_WIDTH = 96;
 const BADGE_HOST_MIN_HEIGHT = 54;
 
-const MIN_VISIBLE_PROGRESS = 5;
 const AUTO_SAVE_PROGRESS_STEP = 5;
 const AUTO_SAVE_INTERVAL_MS = 15000;
+const BOOTSTRAP_REFRESH_INTERVAL_MS = 1000;
+const BOOTSTRAP_REFRESH_MAX_ATTEMPTS = 16;
+const ROUTE_WATCH_INTERVAL_MS = 600;
 
 const state = {
   settings: { ...DEFAULT_SETTINGS },
@@ -99,159 +107,8 @@ const state = {
   }
 };
 
-function normalizeBvid(rawValue) {
-  if (typeof rawValue !== 'string') {
-    return '';
-  }
-
-  const match = rawValue.toUpperCase().match(/BV[0-9A-Z]+/);
-  return match ? match[0] : '';
-}
-
-function parseBvidFromUrl(url) {
-  if (typeof url !== 'string') {
-    return '';
-  }
-
-  const videoPathMatch = url.match(/\/video\/(BV[0-9A-Za-z]+)/);
-
-  if (videoPathMatch) {
-    return normalizeBvid(videoPathMatch[1]);
-  }
-
-  try {
-    const parsedUrl = new URL(url, location.href);
-    const queryBvid = parsedUrl.searchParams.get('bvid');
-
-    if (queryBvid) {
-      return normalizeBvid(queryBvid);
-    }
-  } catch (error) {
-    // 相对路径或异常链接继续走兜底正则。
-  }
-
-  const queryMatch = url.match(/[?&#]bvid=(BV[0-9A-Za-z]+)/i);
-  return normalizeBvid(queryMatch ? queryMatch[1] : '');
-}
-
-function clampProgress(progress) {
-  const numericValue = Number(progress);
-
-  if (!Number.isFinite(numericValue)) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(100, Math.round(numericValue)));
-}
-
-function sanitizeCompletionThreshold(value) {
-  const numericValue = Number(value);
-
-  if (!Number.isFinite(numericValue)) {
-    return DEFAULT_COMPLETE_THRESHOLD;
-  }
-
-  return Math.max(
-    COMPLETE_THRESHOLD_MIN,
-    Math.min(COMPLETE_THRESHOLD_MAX, Math.round(numericValue))
-  );
-}
-
-function normalizeSettings(settings) {
-  return {
-    ...DEFAULT_SETTINGS,
-    ...(settings || {}),
-    watchMarkerEnabled: settings && Object.prototype.hasOwnProperty.call(settings, 'watchMarkerEnabled')
-      ? Boolean(settings.watchMarkerEnabled)
-      : DEFAULT_SETTINGS.watchMarkerEnabled,
-    collectionBoostEnabled: settings && Object.prototype.hasOwnProperty.call(settings, 'collectionBoostEnabled')
-      ? Boolean(settings.collectionBoostEnabled)
-      : DEFAULT_SETTINGS.collectionBoostEnabled,
-    completionThreshold: sanitizeCompletionThreshold(settings && settings.completionThreshold)
-  };
-}
-
 function getCompletionThreshold(settings = state.settings) {
   return sanitizeCompletionThreshold(settings && settings.completionThreshold);
-}
-
-function getRecordPlaybackProgress(record) {
-  if (!record || typeof record !== 'object') {
-    return 0;
-  }
-
-  const duration = Number(record.duration);
-  const lastPosition = Number(record.lastPosition);
-
-  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(lastPosition) || lastPosition <= 0) {
-    return 0;
-  }
-
-  return clampProgress((lastPosition / duration) * 100);
-}
-
-function isPlaybackCompletionAtEnd(record) {
-  if (!record || typeof record !== 'object') {
-    return false;
-  }
-
-  const duration = Number(record.duration);
-  const lastPosition = Number(record.lastPosition);
-
-  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(lastPosition) || lastPosition <= 0) {
-    return false;
-  }
-
-  return lastPosition >= Math.max(Math.round(duration) - 1, 0) || getRecordPlaybackProgress(record) >= 99;
-}
-
-function getRecordCompletionKind(record) {
-  if (!record || !record.completed) {
-    return null;
-  }
-
-  if (
-    record.completionSource === 'manual' ||
-    record.completionSource === 'ended' ||
-    record.completionSource === 'threshold'
-  ) {
-    return record.completionSource;
-  }
-
-  return isPlaybackCompletionAtEnd(record) ? 'ended' : 'threshold';
-}
-
-function getRecordProgress(record) {
-  if (!record || typeof record !== 'object') {
-    return 0;
-  }
-
-  const rawMaxProgress = clampProgress(record.maxProgress);
-  const storedIncompleteProgress = Math.min(
-    MAX_INCOMPLETE_PROGRESS,
-    clampProgress(record.lastIncompleteProgress)
-  );
-  const playbackProgress = Math.min(MAX_INCOMPLETE_PROGRESS, getRecordPlaybackProgress(record));
-
-  if (record.completed) {
-    const completionKind = getRecordCompletionKind(record);
-
-    if (completionKind === 'manual' || completionKind === 'ended') {
-      return 100;
-    }
-
-    return Math.max(
-      storedIncompleteProgress,
-      playbackProgress,
-      rawMaxProgress >= 100 ? 0 : Math.min(MAX_INCOMPLETE_PROGRESS, rawMaxProgress)
-    );
-  }
-
-  return Math.max(
-    rawMaxProgress,
-    storedIncompleteProgress,
-    playbackProgress
-  );
 }
 
 function isListPlaybackPage() {
@@ -360,19 +217,7 @@ function formatWatchStatus(record) {
 }
 
 function isCompletedRecord(record, completionThreshold = getCompletionThreshold()) {
-  if (!record) {
-    return false;
-  }
-
-  if (record.completed) {
-    const completionKind = getRecordCompletionKind(record);
-
-    if (completionKind === 'manual' || completionKind === 'ended') {
-      return true;
-    }
-  }
-
-  return getRecordProgress(record) >= completionThreshold;
+  return globalThis.BilibiliBoostShared.isCompletedRecord(record, completionThreshold);
 }
 
 async function sendMessage(type, payload) {
@@ -494,184 +339,6 @@ async function syncCurrentVideoContext() {
   state.watch.lastSyncedProgress = state.watch.currentRecord ? getRecordProgress(state.watch.currentRecord) : 0;
 }
 
-function getCollectionControls() {
-  return document.querySelector(`.${COLLECTION_CONTROLS_CLASS}`);
-}
-
-function clearCollectionStyles() {
-  const videoItems = document.querySelectorAll(VIDEO_ITEM_SELECTOR);
-
-  videoItems.forEach((item) => {
-    const titleElements = item.querySelectorAll('[class*="title"], a');
-
-    titleElements.forEach((titleElement) => {
-      titleElement.style.whiteSpace = '';
-      titleElement.style.overflow = '';
-      titleElement.style.textOverflow = '';
-      titleElement.style.webkitLineClamp = '';
-      titleElement.style.display = '';
-      titleElement.style.height = '';
-      titleElement.style.maxHeight = '';
-      titleElement.style.lineClamp = '';
-    });
-
-    item.classList.remove('title-expanded');
-    item.style.height = '';
-    item.style.minHeight = '';
-  });
-
-  const listBody = document.querySelector(VIDEO_LIST_BODY_SELECTOR);
-
-  if (listBody) {
-    listBody.style.maxHeight = '';
-    listBody.style.overflowY = '';
-    listBody.style.overflowX = '';
-  }
-}
-
-function removeCollectionControls() {
-  const controls = getCollectionControls();
-
-  if (controls) {
-    controls.remove();
-  }
-}
-
-function resetCollectionBoost() {
-  clearCollectionStyles();
-  removeCollectionControls();
-  state.collection.isExpanded = false;
-  state.collection.isListExpanded = false;
-}
-
-function applyCollectionState() {
-  if (!state.settings.collectionBoostEnabled || !isVideoPage()) {
-    return;
-  }
-
-  const controls = getCollectionControls();
-  const titleButton = controls && controls.querySelector('[data-role="toggle-title"]');
-  const listButton = controls && controls.querySelector('[data-role="toggle-list"]');
-  const videoItems = document.querySelectorAll(VIDEO_ITEM_SELECTOR);
-
-  videoItems.forEach((item) => {
-    const titleElements = item.querySelectorAll('[class*="title"], a');
-
-    titleElements.forEach((titleElement) => {
-      if (state.collection.isExpanded) {
-        titleElement.style.whiteSpace = 'normal';
-        titleElement.style.overflow = 'visible';
-        titleElement.style.textOverflow = 'clip';
-        titleElement.style.webkitLineClamp = 'unset';
-        titleElement.style.display = 'block';
-        titleElement.style.height = 'auto';
-        titleElement.style.maxHeight = 'none';
-        titleElement.style.lineClamp = 'unset';
-      } else {
-        titleElement.style.whiteSpace = '';
-        titleElement.style.overflow = '';
-        titleElement.style.textOverflow = '';
-        titleElement.style.webkitLineClamp = '';
-        titleElement.style.display = '';
-        titleElement.style.height = '';
-        titleElement.style.maxHeight = '';
-        titleElement.style.lineClamp = '';
-      }
-    });
-
-    if (state.collection.isExpanded) {
-      item.classList.add('title-expanded');
-      item.style.height = 'auto';
-      item.style.minHeight = 'auto';
-    } else {
-      item.classList.remove('title-expanded');
-      item.style.height = '';
-      item.style.minHeight = '';
-    }
-  });
-
-  const listBody = document.querySelector(VIDEO_LIST_BODY_SELECTOR);
-
-  if (listBody) {
-    if (state.collection.isListExpanded) {
-      listBody.style.maxHeight = '600px';
-      listBody.style.overflowY = 'auto';
-      listBody.style.overflowX = 'hidden';
-    } else {
-      listBody.style.maxHeight = '';
-      listBody.style.overflowY = '';
-      listBody.style.overflowX = '';
-    }
-  }
-
-  if (titleButton) {
-    titleButton.textContent = state.collection.isExpanded ? '折叠标题' : '展开标题';
-  }
-
-  if (listButton) {
-    listButton.textContent = state.collection.isListExpanded ? '折叠列表' : '展开列表';
-  }
-}
-
-function ensureCollectionControls() {
-  if (!state.settings.collectionBoostEnabled || !isVideoPage()) {
-    resetCollectionBoost();
-    return;
-  }
-
-  const header = document.querySelector(PLAYLIST_HEADER_SELECTOR);
-
-  if (!header) {
-    removeCollectionControls();
-    return;
-  }
-
-  let controls = header.querySelector(`.${COLLECTION_CONTROLS_CLASS}`);
-
-  if (!controls) {
-    controls = document.createElement('div');
-    controls.className = COLLECTION_CONTROLS_CLASS;
-
-    const titleButton = document.createElement('div');
-    titleButton.className = 'title-expander-btn';
-    titleButton.dataset.role = 'toggle-title';
-    titleButton.setAttribute('role', 'button');
-    titleButton.tabIndex = 0;
-    titleButton.addEventListener('click', () => {
-      state.collection.isExpanded = !state.collection.isExpanded;
-      applyCollectionState();
-    });
-    titleButton.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        titleButton.click();
-      }
-    });
-
-    const listButton = document.createElement('div');
-    listButton.className = 'title-expander-btn';
-    listButton.dataset.role = 'toggle-list';
-    listButton.setAttribute('role', 'button');
-    listButton.tabIndex = 0;
-    listButton.addEventListener('click', () => {
-      state.collection.isListExpanded = !state.collection.isListExpanded;
-      applyCollectionState();
-    });
-    listButton.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        listButton.click();
-      }
-    });
-
-    controls.appendChild(titleButton);
-    controls.appendChild(listButton);
-    header.appendChild(controls);
-  }
-
-  applyCollectionState();
-}
-
 async function markWatchRecordComplete(bvid, title = '') {
   const normalizedBvid = normalizeBvid(bvid);
 
@@ -781,28 +448,57 @@ function formatWatchTime(seconds) {
     : `${paddedMinutes}:${paddedSeconds}`;
 }
 
-function getCurrentPlayerSeekPosition(record = state.watch.currentRecord) {
+function getWatchProgressJumpState(record = state.watch.currentRecord) {
   const player = state.watch.player || getCurrentVideoElement();
   const seekPosition = getRecordSeekPosition(record);
 
-  if (!player || seekPosition <= 0) {
-    return 0;
+  if (seekPosition <= 0) {
+    return {
+      canJump: false,
+      position: 0,
+      title: '暂无已看进度：播放一段时间后会自动记录可跳转位置'
+    };
+  }
+
+  const formattedSeekPosition = formatWatchTime(seekPosition);
+
+  if (!player) {
+    return {
+      canJump: false,
+      position: 0,
+      title: `播放器未就绪，稍后可跳转到 ${formattedSeekPosition}`
+    };
   }
 
   const duration = Number(player.duration);
 
   if (!Number.isFinite(duration) || duration <= 0) {
-    return 0;
+    return {
+      canJump: false,
+      position: 0,
+      title: `播放器加载完成后可跳转到 ${formattedSeekPosition}`
+    };
   }
 
-  return Math.min(seekPosition, Math.max(duration - 1, 0));
+  const normalizedSeekPosition = Math.min(seekPosition, Math.max(duration - 1, 0));
+
+  return {
+    canJump: normalizedSeekPosition > 0,
+    position: normalizedSeekPosition,
+    title: `跳转到已保存观看位置 ${formatWatchTime(normalizedSeekPosition)}`
+  };
+}
+
+function getCurrentPlayerSeekPosition(record = state.watch.currentRecord) {
+  return getWatchProgressJumpState(record).position;
 }
 
 function jumpToCurrentWatchProgress() {
   const player = state.watch.player || getCurrentVideoElement();
-  const seekPosition = getCurrentPlayerSeekPosition();
+  const jumpState = getWatchProgressJumpState();
+  const seekPosition = jumpState.position;
 
-  if (!player || seekPosition <= 0) {
+  if (!player || !jumpState.canJump) {
     return;
   }
 
@@ -825,7 +521,7 @@ function renderWatchPanel(panelElement = document.getElementById(WATCH_PANEL_ID)
   const markButton = panel.querySelector('[data-role="mark-complete"]');
   const clearButton = panel.querySelector('[data-role="clear-record"]');
   const status = formatWatchStatus(state.watch.currentRecord);
-  const seekPosition = getCurrentPlayerSeekPosition();
+  const jumpState = getWatchProgressJumpState();
 
   if (statusElement) {
     statusElement.textContent = status.text;
@@ -833,10 +529,9 @@ function renderWatchPanel(panelElement = document.getElementById(WATCH_PANEL_ID)
   }
 
   if (jumpButton) {
-    jumpButton.disabled = seekPosition <= 0;
-    jumpButton.title = seekPosition > 0
-      ? `跳转到上次已看位置 ${formatWatchTime(seekPosition)}`
-      : '暂无可跳转的已看进度';
+    jumpButton.disabled = !jumpState.canJump;
+    jumpButton.title = jumpState.title;
+    jumpButton.setAttribute('aria-label', jumpState.title);
   }
 
   if (markButton) {
@@ -1356,6 +1051,18 @@ function getWatchPanelInlinePlacement(element, context, panelSize, options = {})
   };
 }
 
+function debugWatchPanelPlacement(mode, detail = {}) {
+  if (!WATCH_PANEL_DEBUG) {
+    return;
+  }
+
+  console.debug('[Bilibili-Boost] 播放页状态面板布局', {
+    mode,
+    ...detail
+  });
+}
+
+// 布局规则：优先贴到元信息行右侧；元信息太长时回退标题行；都放不下才另起一行。
 function getWatchPanelPlacement(panel, context) {
   const panelSize = getWatchPanelMeasuredSize(panel);
 
@@ -1367,6 +1074,7 @@ function getWatchPanelPlacement(panel, context) {
   );
 
   if (metaPlacement) {
+    debugWatchPanelPlacement('meta', metaPlacement);
     return {
       ...metaPlacement,
       mode: 'meta'
@@ -1381,12 +1089,14 @@ function getWatchPanelPlacement(panel, context) {
   );
 
   if (titlePlacement) {
+    debugWatchPanelPlacement('title', titlePlacement);
     return {
       ...titlePlacement,
       mode: 'title'
     };
   }
 
+  debugWatchPanelPlacement('block');
   return {
     mode: 'block'
   };
@@ -1634,9 +1344,7 @@ function handleWindowResize() {
   scheduleRefresh(80);
 }
 
-function resolveBadgeHost(anchorElement) {
-  const cardHostElement = anchorElement.closest(CARD_HOST_SELECTOR) || anchorElement.closest(CARD_CONTAINER_SELECTOR);
-
+function resolveBadgeHost(anchorElement, cardHostElement = resolveCardHost(anchorElement)) {
   if (cardHostElement) {
     const coverLink = Array.from(cardHostElement.querySelectorAll(VIDEO_LINK_SELECTOR)).find((linkElement) => {
       if (!(linkElement instanceof HTMLElement)) {
@@ -1787,7 +1495,8 @@ function isValidBadgeHost(candidateElement, cardHostElement) {
 
 function collectWatchCardTargets() {
   const anchors = Array.from(document.querySelectorAll(VIDEO_LINK_SELECTOR));
-  const seenHosts = new Set();
+  const seenCardHosts = new Set();
+  const seenBadgeHosts = new Set();
   const targets = [];
 
   anchors.forEach((anchorElement) => {
@@ -1798,17 +1507,18 @@ function collectWatchCardTargets() {
     }
 
     const cardHostElement = resolveCardHost(anchorElement);
-    const badgeHostElement = resolveBadgeHost(anchorElement);
+    const badgeHostElement = resolveBadgeHost(anchorElement, cardHostElement);
 
     if (!badgeHostElement) {
       return;
     }
 
-    if (seenHosts.has(cardHostElement)) {
+    if (seenCardHosts.has(cardHostElement) || seenBadgeHosts.has(badgeHostElement)) {
       return;
     }
 
-    seenHosts.add(cardHostElement);
+    seenCardHosts.add(cardHostElement);
+    seenBadgeHosts.add(badgeHostElement);
     targets.push({
       anchorElement,
       badgeHostElement,
@@ -1822,11 +1532,9 @@ function collectWatchCardTargets() {
 }
 
 function removeThumbnailBadge(hostElement) {
-  const badge = hostElement.querySelector(`.${THUMBNAIL_BADGE_CLASS}`);
-
-  if (badge) {
+  hostElement.querySelectorAll(`.${THUMBNAIL_BADGE_CLASS}`).forEach((badge) => {
     badge.remove();
-  }
+  });
 
   hostElement.classList.remove(THUMBNAIL_BADGE_HOST_CLASS);
 }
@@ -1838,10 +1546,11 @@ function clearAllThumbnailBadges() {
 }
 
 function getCardVideoTitle(hostElement, anchorElement) {
+  const titleElement = hostElement && hostElement.querySelector(CARD_TITLE_SELECTOR);
   const titleCandidates = [
     anchorElement && anchorElement.getAttribute('title'),
-    hostElement && hostElement.querySelector(CARD_TITLE_SELECTOR) && hostElement.querySelector(CARD_TITLE_SELECTOR).getAttribute('title'),
-    hostElement && hostElement.querySelector(CARD_TITLE_SELECTOR) && hostElement.querySelector(CARD_TITLE_SELECTOR).textContent,
+    titleElement && titleElement.getAttribute('title'),
+    titleElement && titleElement.textContent,
     anchorElement && anchorElement.textContent
   ];
 
@@ -1956,11 +1665,9 @@ function removeCardWatchToggle(rowElement) {
     return;
   }
 
-  const toggleButton = rowElement.querySelector(`.${CARD_WATCH_TOGGLE_CLASS}`);
-
-  if (toggleButton) {
+  rowElement.querySelectorAll(`.${CARD_WATCH_TOGGLE_CLASS}`).forEach((toggleButton) => {
     toggleButton.remove();
-  }
+  });
 
   rowElement.classList.remove(CARD_WATCH_TOGGLE_ROW_CLASS);
 
@@ -2042,7 +1749,12 @@ function renderCardWatchToggle(rowElement, target, record) {
 
   rowElement.classList.add(CARD_WATCH_TOGGLE_ROW_CLASS);
 
-  let toggleButton = rowElement.querySelector(`.${CARD_WATCH_TOGGLE_CLASS}`);
+  const toggleButtons = Array.from(rowElement.querySelectorAll(`.${CARD_WATCH_TOGGLE_CLASS}`));
+  let toggleButton = toggleButtons[0];
+
+  toggleButtons.slice(1).forEach((extraButton) => {
+    extraButton.remove();
+  });
 
   if (!toggleButton) {
     toggleButton = document.createElement('button');
@@ -2072,7 +1784,12 @@ function renderThumbnailBadge(hostElement, record) {
     return;
   }
 
-  let badge = hostElement.querySelector(`.${THUMBNAIL_BADGE_CLASS}`);
+  const badges = Array.from(hostElement.querySelectorAll(`.${THUMBNAIL_BADGE_CLASS}`));
+  let badge = badges[0];
+
+  badges.slice(1).forEach((extraBadge) => {
+    extraBadge.remove();
+  });
 
   if (!badge) {
     badge = document.createElement('div');
@@ -2096,7 +1813,7 @@ function renderCardWatchToggles(targets) {
   targets.forEach((target) => {
     const rowElement = findCardWatchToggleRow(target.cardHostElement);
 
-    if (!rowElement) {
+    if (!rowElement || activeRows.has(rowElement)) {
       return;
     }
 
@@ -2126,7 +1843,7 @@ async function renderThumbnailBadges() {
     return;
   }
 
-  const bvids = badgeTargets.map((target) => target.bvid);
+  const bvids = Array.from(new Set(badgeTargets.map((target) => target.bvid).filter(Boolean)));
   await ensureCachedWatchRecords(bvids);
 
   const activeHosts = new Set(badgeTargets.map((target) => target.badgeHostElement));
@@ -2224,12 +1941,12 @@ function startBootstrapRefresh(initialDelay = 0) {
     state.bootstrapAttempts = 0;
     state.bootstrapTimer = window.setInterval(() => {
       state.bootstrapAttempts += 1;
-      void refreshPageFeatures();
+      scheduleRefresh(0);
 
-      if (state.bootstrapAttempts >= 16) {
+      if (state.bootstrapAttempts >= BOOTSTRAP_REFRESH_MAX_ATTEMPTS) {
         stopBootstrapRefresh();
       }
-    }, 1000);
+    }, BOOTSTRAP_REFRESH_INTERVAL_MS);
   };
 
   if (initialDelay > 0) {
@@ -2256,7 +1973,7 @@ function startRouteWatcher() {
 
   state.routeTimer = window.setInterval(() => {
     handleRouteChange();
-  }, 600);
+  }, ROUTE_WATCH_INTERVAL_MS);
 }
 
 function registerRuntimeListeners() {
@@ -2322,7 +2039,3 @@ async function init() {
     }, { once: true });
   }
 }
-
-init().catch((error) => {
-  console.error('[Bilibili-Boost] 内容脚本初始化失败', error);
-});

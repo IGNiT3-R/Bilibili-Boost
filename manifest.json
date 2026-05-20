@@ -6,7 +6,7 @@
   "permissions": ["storage", "tabs"],
   "host_permissions": ["*://*.bilibili.com/*"],
   "background": {
-    "scripts": ["background.js"],
+    "scripts": ["shared.js", "background.js"],
     "service_worker": "background.js"
   },
   "browser_specific_settings": {
@@ -36,7 +36,7 @@
   "content_scripts": [
     {
       "matches": ["*://*.bilibili.com/*"],
-      "js": ["content.js"],
+      "js": ["shared.js", "content.js", "content-collection.js", "content-main.js"],
       "css": ["styles.css"],
       "run_at": "document_end"
     }

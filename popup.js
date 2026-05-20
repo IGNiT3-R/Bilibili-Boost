@@ -7,17 +7,14 @@
  */
 
 const extensionApi = globalThis.browser || globalThis.chrome;
-const DEFAULT_COMPLETE_THRESHOLD = 98;
-const COMPLETE_THRESHOLD_MIN = 90;
-const COMPLETE_THRESHOLD_MAX = 100;
-const MAX_INCOMPLETE_PROGRESS = 99;
-const MIN_VISIBLE_PROGRESS = 5;
-
-const DEFAULT_SETTINGS = {
-  watchMarkerEnabled: true,
-  collectionBoostEnabled: true,
-  completionThreshold: DEFAULT_COMPLETE_THRESHOLD
-};
+const {
+  DEFAULT_SETTINGS,
+  MIN_VISIBLE_PROGRESS,
+  parseBvidFromUrl,
+  sanitizeCompletionThreshold,
+  normalizeSettings,
+  getRecordProgress
+} = globalThis.BilibiliBoostShared;
 
 const MESSAGE_TYPES = {
   GET_SETTINGS: 'GET_SETTINGS',
@@ -53,153 +50,6 @@ let currentVideo = null;
 let currentVideoRecord = null;
 let currentSettings = { ...DEFAULT_SETTINGS };
 
-function normalizeBvid(rawValue) {
-  if (typeof rawValue !== 'string') {
-    return '';
-  }
-
-  const match = rawValue.toUpperCase().match(/BV[0-9A-Z]+/);
-  return match ? match[0] : '';
-}
-
-function parseBvidFromUrl(url) {
-  if (typeof url !== 'string') {
-    return '';
-  }
-
-  const videoPathMatch = url.match(/\/video\/(BV[0-9A-Za-z]+)/);
-
-  if (videoPathMatch) {
-    return normalizeBvid(videoPathMatch[1]);
-  }
-
-  try {
-    const parsedUrl = new URL(url);
-    const queryBvid = parsedUrl.searchParams.get('bvid');
-
-    if (queryBvid) {
-      return normalizeBvid(queryBvid);
-    }
-  } catch (error) {
-    // 非标准 URL 继续走兜底正则。
-  }
-
-  const queryMatch = url.match(/[?&#]bvid=(BV[0-9A-Za-z]+)/i);
-  return normalizeBvid(queryMatch ? queryMatch[1] : '');
-}
-
-function clampProgress(progress) {
-  const numericValue = Number(progress);
-
-  if (!Number.isFinite(numericValue)) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(100, Math.round(numericValue)));
-}
-
-function sanitizeCompletionThreshold(value) {
-  const numericValue = Number(value);
-
-  if (!Number.isFinite(numericValue)) {
-    return DEFAULT_COMPLETE_THRESHOLD;
-  }
-
-  return Math.max(
-    COMPLETE_THRESHOLD_MIN,
-    Math.min(COMPLETE_THRESHOLD_MAX, Math.round(numericValue))
-  );
-}
-
-function normalizeSettings(settings) {
-  return {
-    ...DEFAULT_SETTINGS,
-    ...(settings || {}),
-    watchMarkerEnabled: settings && Object.prototype.hasOwnProperty.call(settings, 'watchMarkerEnabled')
-      ? Boolean(settings.watchMarkerEnabled)
-      : DEFAULT_SETTINGS.watchMarkerEnabled,
-    collectionBoostEnabled: settings && Object.prototype.hasOwnProperty.call(settings, 'collectionBoostEnabled')
-      ? Boolean(settings.collectionBoostEnabled)
-      : DEFAULT_SETTINGS.collectionBoostEnabled,
-    completionThreshold: sanitizeCompletionThreshold(settings && settings.completionThreshold)
-  };
-}
-
-function getRecordPlaybackProgress(record) {
-  if (!record || typeof record !== 'object') {
-    return 0;
-  }
-
-  const duration = Number(record.duration);
-  const lastPosition = Number(record.lastPosition);
-
-  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(lastPosition) || lastPosition <= 0) {
-    return 0;
-  }
-
-  return clampProgress((lastPosition / duration) * 100);
-}
-
-function isPlaybackCompletionAtEnd(record) {
-  if (!record || typeof record !== 'object') {
-    return false;
-  }
-
-  const duration = Number(record.duration);
-  const lastPosition = Number(record.lastPosition);
-
-  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(lastPosition) || lastPosition <= 0) {
-    return false;
-  }
-
-  return lastPosition >= Math.max(Math.round(duration) - 1, 0) || getRecordPlaybackProgress(record) >= 99;
-}
-
-function getRecordCompletionKind(record) {
-  if (!record || !record.completed) {
-    return null;
-  }
-
-  if (
-    record.completionSource === 'manual' ||
-    record.completionSource === 'ended' ||
-    record.completionSource === 'threshold'
-  ) {
-    return record.completionSource;
-  }
-
-  return isPlaybackCompletionAtEnd(record) ? 'ended' : 'threshold';
-}
-
-function getRecordProgress(record) {
-  if (!record || typeof record !== 'object') {
-    return 0;
-  }
-
-  const rawMaxProgress = clampProgress(record.maxProgress);
-  const storedIncompleteProgress = Math.min(
-    MAX_INCOMPLETE_PROGRESS,
-    clampProgress(record.lastIncompleteProgress)
-  );
-  const playbackProgress = Math.min(MAX_INCOMPLETE_PROGRESS, getRecordPlaybackProgress(record));
-
-  if (record.completed) {
-    const completionKind = getRecordCompletionKind(record);
-
-    if (completionKind === 'manual' || completionKind === 'ended') {
-      return 100;
-    }
-
-    return Math.max(
-      storedIncompleteProgress,
-      playbackProgress,
-      rawMaxProgress >= 100 ? 0 : Math.min(MAX_INCOMPLETE_PROGRESS, rawMaxProgress)
-    );
-  }
-
-  return Math.max(rawMaxProgress, storedIncompleteProgress, playbackProgress);
-}
-
 function formatWatchStatus(record) {
   if (!record) {
     return {
@@ -231,19 +81,7 @@ function formatWatchStatus(record) {
 }
 
 function isCompletedRecord(record) {
-  if (!record) {
-    return false;
-  }
-
-  if (record.completed) {
-    const completionKind = getRecordCompletionKind(record);
-
-    if (completionKind === 'manual' || completionKind === 'ended') {
-      return true;
-    }
-  }
-
-  return getRecordProgress(record) >= currentSettings.completionThreshold;
+  return globalThis.BilibiliBoostShared.isCompletedRecord(record, currentSettings.completionThreshold);
 }
 
 async function sendMessage(type, payload) {
@@ -454,6 +292,28 @@ function downloadJsonFile(fileName, content) {
   }, 1000);
 }
 
+function formatImportSummary(summary) {
+  const detailParts = [
+    `共读取 ${summary.totalCount} 条`,
+    `写入 ${summary.appliedCount} 条`,
+    `跳过 ${summary.skippedCount} 条`
+  ];
+
+  if (summary.invalidCount > 0) {
+    detailParts.push(`无效 ${summary.invalidCount} 条`);
+  }
+
+  if (summary.duplicateCount > 0) {
+    detailParts.push(`重复 ${summary.duplicateCount} 条`);
+  }
+
+  if (summary.olderRecordSkippedCount > 0) {
+    detailParts.push(`本地较新 ${summary.olderRecordSkippedCount} 条`);
+  }
+
+  return `导入完成：${detailParts.join('，')}。`;
+}
+
 async function handleExportRecords() {
   setDataActionLoading(true);
   setDataManagerTip('正在导出已看记录...', 'idle');
@@ -494,10 +354,7 @@ async function handleImportRecordsInputChange(event) {
     const summary = await sendMessage(MESSAGE_TYPES.IMPORT_WATCH_RECORDS, parsedData);
 
     await refreshCurrentVideoInfo();
-    setDataManagerTip(
-      `导入完成：共读取 ${summary.totalCount} 条，写入 ${summary.appliedCount} 条，跳过 ${summary.skippedCount} 条。`,
-      'success'
-    );
+    setDataManagerTip(formatImportSummary(summary), 'success');
   } catch (error) {
     console.error('[Bilibili-Boost] 导入已看记录失败', error);
     setDataManagerTip(

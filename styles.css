@@ -55,10 +55,30 @@
 }
 
 .video-pod__item.title-expanded {
+  height: auto !important;
+  min-height: auto !important;
   margin-bottom: 8px !important;
   padding-bottom: 8px !important;
   border-bottom: 1px solid #e3e5e7 !important;
   background-color: #fafafa !important;
+}
+
+.video-pod__item.title-expanded [class*="title"],
+.video-pod__item.title-expanded a {
+  display: block !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  -webkit-line-clamp: unset !important;
+  line-clamp: unset !important;
+}
+
+.video-pod__body.bb-collection-list-expanded {
+  max-height: 600px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
 }
 
 .bb-watch-panel {
