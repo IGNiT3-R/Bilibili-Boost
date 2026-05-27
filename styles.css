@@ -81,6 +81,7 @@
   overflow-y: auto !important;
 }
 
+/* 播放页状态面板的 inline 模式由 JS 挂到 body 绝对定位，避免挤压 B 站标题/元信息排版。 */
 .bb-watch-panel {
   display: flex;
   flex-wrap: wrap;
@@ -215,6 +216,7 @@
   width: 100%;
 }
 
+/* 卡片勾选框固定放在信息行最右侧，尺寸要小于缩略图标签，避免抢原页面视觉焦点。 */
 .bb-watch-card-toggle {
   display: inline-flex;
   flex: 0 0 auto;
@@ -277,10 +279,7 @@
   transform: none;
 }
 
-.bb-watch-badge-host {
-  position: relative !important;
-}
-
+/* 缩略图标签放左上角，并禁用鼠标事件，避免影响 B 站封面悬停预览和稍后再看按钮。 */
 .bb-watch-badge {
   position: absolute;
   top: 6px;
@@ -307,6 +306,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: opacity 0.12s ease, visibility 0.12s ease;
+}
+
+/* 预览期间只做视觉隐藏，不删除节点；鼠标离开后由 CSS 自动恢复。 */
+.bb-watch-badge-host:hover > .bb-watch-badge {
+  opacity: 0;
+  visibility: hidden;
 }
 
 .bb-watch-badge[data-status="progress"] {

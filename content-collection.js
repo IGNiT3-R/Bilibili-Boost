@@ -16,6 +16,7 @@ function clearCollectionStyles() {
   videoItems.forEach((item) => {
     const titleElements = item.querySelectorAll('[class*="title"], a');
 
+    // 关闭合集增强时必须逐项清空内联样式，否则 B 站列表复用节点后会保留展开状态。
     titleElements.forEach((titleElement) => {
       titleElement.style.whiteSpace = '';
       titleElement.style.overflow = '';
@@ -86,6 +87,7 @@ function applyCollectionState() {
   }
 }
 
+// 合集按钮挂在 B 站原生合集头部，样式复用类名保持和关注/充电类按钮接近。
 function ensureCollectionControls() {
   if (!state.settings.collectionBoostEnabled || !isVideoPage()) {
     resetCollectionBoost();

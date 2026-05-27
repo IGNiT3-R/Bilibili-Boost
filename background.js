@@ -33,6 +33,8 @@ const SETTINGS_KEY = 'settings';
 const EXPORT_SCHEMA_VERSION = 1;
 const MAX_INCOMPLETE_PROGRESS = globalThis.BilibiliBoostShared.MAX_INCOMPLETE_PROGRESS;
 
+// 后台脚本是唯一的数据写入入口：内容脚本和弹窗都通过消息调用这里，
+// 避免多个页面各自直接写 IndexedDB 后产生合并规则不一致的问题。
 const MESSAGE_TYPES = {
   GET_SETTINGS: 'GET_SETTINGS',
   UPDATE_SETTINGS: 'UPDATE_SETTINGS',
@@ -60,6 +62,7 @@ function shouldPersistSettings(rawSettings, normalizedSettings) {
   );
 }
 
+// IndexedDB 仍是事件风格 API，统一包成 Promise 后，事务链路更容易保持顺序。
 function requestToPromise(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -75,6 +78,8 @@ function transactionToPromise(transaction) {
   });
 }
 
+// 已看记录会长期增长，因此不用 chrome.storage.local 存大数组，
+// 而是放在 IndexedDB 的对象仓库里，BVID 作为稳定主键。
 function openDatabase() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -96,6 +101,8 @@ function openDatabase() {
   });
 }
 
+// 每次操作单独打开并关闭数据库连接，降低后台 service worker 挂起/恢复时
+// 持有旧连接导致事务异常的概率。
 async function withStore(mode, handler) {
   const database = await openDatabase();
 
@@ -111,6 +118,7 @@ async function withStore(mode, handler) {
   }
 }
 
+// 设置项体积小、读取频繁，继续使用扩展本地存储；这里顺手补齐旧版本缺失字段。
 async function ensureSettings() {
   const data = await extensionApi.storage.local.get(SETTINGS_KEY);
   const rawSettings = data[SETTINGS_KEY];
@@ -209,6 +217,8 @@ function buildWatchRecord(existingRecord, payload, completionThreshold) {
   const shouldCompleteByThreshold = source !== 'manual' && !payload.completed && incomingProgress >= threshold;
   const shouldComplete = shouldCompleteByManual || shouldCompleteByEnded || shouldCompleteByThreshold;
   const completed = existingCompleted || shouldComplete;
+  // lastIncompleteProgress 记录“被手动标为看完前”的最高进度。
+  // 这样用户取消“已看完”时，可以恢复到原来的 30%/60% 等真实进度。
   const nextIncompleteProgress = Math.min(
     MAX_INCOMPLETE_PROGRESS,
     Math.max(
@@ -223,6 +233,7 @@ function buildWatchRecord(existingRecord, payload, completionThreshold) {
   let completionSource = null;
 
   if (completed) {
+    // 手动完成优先级最高。已经手动标过的视频，不应该被后续自动进度覆盖来源。
     if (existingCompletionKind === 'manual') {
       completionSource = 'manual';
     } else if (shouldCompleteByManual) {
@@ -292,6 +303,8 @@ async function restoreWatchRecord(bvid) {
     return currentRecord || null;
   }
 
+  // 取消“已看完”不是简单删记录：如果之前确实看到过一部分，
+  // 应恢复到阈值以下的已看百分比，继续在缩略图上显示“已看 xx%”。
   const restoredProgress = Math.min(
     getRecordIncompleteProgress(currentRecord),
     sanitizeCompletionThreshold(settings.completionThreshold) - 1
@@ -365,6 +378,7 @@ async function broadcastToBilibiliTabs(message) {
   }
 }
 
+// 所有页面都维护本地缓存。写入后广播，让已打开的搜索页/个人主页/播放页立即刷新。
 async function broadcastWatchRecordChanged(bvid, record) {
   try {
     await broadcastToBilibiliTabs({
@@ -400,6 +414,7 @@ async function broadcastWatchRecordsChanged(records) {
   }
 }
 
+// 导入文件可能来自旧版本或用户手动编辑，这里只保留可识别、可安全落库的字段。
 function sanitizeImportedWatchRecord(rawRecord) {
   if (!rawRecord || typeof rawRecord !== 'object') {
     return null;
@@ -489,6 +504,7 @@ async function importWatchRecords(payload) {
       duplicateCount += 1;
     }
 
+    // 同一个导入文件里重复 BVID 时，以更新时间最新的一条为准。
     if (!existingRecord || normalizeTimestamp(record.updatedAt, 0) >= normalizeTimestamp(existingRecord.updatedAt, 0)) {
       uniqueRecords.set(record.bvid, record);
     }
@@ -509,6 +525,7 @@ async function importWatchRecords(payload) {
       const currentUpdatedAt = normalizeTimestamp(currentRecord && currentRecord.updatedAt, 0);
       const nextUpdatedAt = normalizeTimestamp(record.updatedAt, 0);
 
+      // 本地记录更新时不被旧导入文件覆盖，避免误导入导致观看进度倒退。
       if (currentRecord && currentUpdatedAt > nextUpdatedAt) {
         olderRecordSkippedCount += 1;
         continue;
@@ -539,6 +556,7 @@ extensionApi.runtime.onInstalled.addListener(() => {
   void ensureSettings();
 });
 
+// Chrome/Firefox 的消息监听如果包含异步逻辑，必须 return true 保持 sendResponse 可用。
 extensionApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message.type !== 'string') {
     return false;

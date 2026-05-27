@@ -50,6 +50,7 @@ let currentVideo = null;
 let currentVideoRecord = null;
 let currentSettings = { ...DEFAULT_SETTINGS };
 
+// 弹窗只负责展示与触发操作，状态文本仍复用共享的完成判定，避免和内容脚本显示不一致。
 function formatWatchStatus(record) {
   if (!record) {
     return {
@@ -106,6 +107,7 @@ async function getCurrentTab() {
   return tabs[0] || null;
 }
 
+// 当前视频卡片是弹窗里唯一依赖当前标签页 URL 的区域，非视频页要显式隐藏。
 function renderCurrentVideoCard(video, record) {
   currentVideoRecord = record || null;
 
@@ -177,6 +179,7 @@ async function handleSettingToggle(key, value) {
   renderCurrentVideoCard(currentVideo, currentVideoRecord);
 }
 
+// 阈值滑块和输入框共享同一个值，提交前统一归一化到 90-100 的整数范围。
 function syncCompletionThresholdControls(threshold) {
   const normalizedThreshold = sanitizeCompletionThreshold(threshold);
   elements.completionThresholdRange.value = String(normalizedThreshold);
@@ -204,6 +207,7 @@ async function commitCompletionThreshold(rawValue) {
   renderCurrentVideoCard(currentVideo, currentVideoRecord);
 }
 
+// input 阶段只做本地预览，change/blur 再落库，避免拖动滑块时频繁写 storage。
 function previewCompletionThreshold(rawValue) {
   if (rawValue === '') {
     return;
@@ -292,6 +296,7 @@ function downloadJsonFile(fileName, content) {
   }, 1000);
 }
 
+// 导入结果要把“无效、重复、本地较新”讲清楚，方便用户判断数据有没有被覆盖。
 function formatImportSummary(summary) {
   const detailParts = [
     `共读取 ${summary.totalCount} 条`,

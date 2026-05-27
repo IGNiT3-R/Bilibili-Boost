@@ -19,6 +19,7 @@
     completionThreshold: DEFAULT_COMPLETE_THRESHOLD
   };
 
+  // BVID 是跨页面、跨功能共用的记录主键；只接受 BV 号，避免把完整 URL 存进数据层。
   function normalizeBvid(rawValue) {
     if (typeof rawValue !== 'string') {
       return '';
@@ -160,6 +161,8 @@
     return isPlaybackCompletionAtEnd(record) ? 'ended' : 'threshold';
   }
 
+  // “未完成进度”表示用户真正看到过但还不应显示为看完的百分比。
+  // 手动标记看完后仍保留它，用于取消标记时恢复原进度。
   function getRecordIncompleteProgress(record) {
     if (!record || typeof record !== 'object') {
       return 0;
@@ -195,6 +198,7 @@
     );
   }
 
+  // 对外展示的进度：手动/自然播放结束显示 100%，阈值命中仍交给完成判定处理。
   function getRecordProgress(record) {
     if (!record || typeof record !== 'object') {
       return 0;
@@ -211,6 +215,7 @@
     return getRecordIncompleteProgress(record);
   }
 
+  // 完成判定统一放在共享层，保证内容脚本、弹窗、后台导入导出使用同一套语义。
   function isCompletedRecord(record, completionThreshold = DEFAULT_COMPLETE_THRESHOLD) {
     if (!record || typeof record !== 'object') {
       return false;

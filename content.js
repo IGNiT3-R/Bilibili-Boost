@@ -37,21 +37,29 @@ const SETTINGS_KEY = 'settings';
 const PLAYLIST_HEADER_SELECTOR = '.video-sections-head, .video-pod__header';
 const VIDEO_LIST_BODY_SELECTOR = '.video-pod__body';
 const VIDEO_ITEM_SELECTOR = '.video-pod__item';
+
+// 播放页顶部“已看/跳转/标记”面板只允许挂在标题与元信息区域，
+// 不能误挂到顶栏、播放器、评论区或浮层，否则会干扰 B 站原生内容加载。
 const WATCH_PANEL_TARGET_SELECTOR = 'h1.video-title, h1[class*="video-title"], h1[class*="title"], .video-info-title, #viewbox_report h1, .playlist-container--left h1';
 const WATCH_PANEL_META_SELECTOR = '.video-info-detail, .video-info-detail-list, .video-meta-container, .video-data, [class*="video-info-detail"], [class*="video-info-meta"]';
 const WATCH_PANEL_META_FALLBACK_SELECTOR = '.pubdate-ip-text, [class*="pubdate"]';
 const WATCH_PANEL_PLAYER_BOUNDARY_SELECTOR = '#bilibili-player, .bpx-player-container, .bilibili-player, .player-wrap, .player-container';
 const WATCH_PANEL_LEFT_COLUMN_SELECTOR = '#viewbox_report, .video-info-container, .video-info, .left-container, .playlist-container--left';
+
+// 缩略图标记和卡片勾选框需要适配搜索页、个人空间、收藏、稍后再看和播放页侧栏。
+// 这些选择器故意偏宽，后续会再通过安全边界与尺寸评分过滤掉误命中的节点。
 const VIDEO_LINK_SELECTOR = 'a[href*="/video/BV"], a[href*="bvid="]';
-const CARD_CONTAINER_SELECTOR = '.bili-video-card, .feed-card, .video-card, .fav-video-card, .media-card, .small-item, .recommend-video-card, .video-page-card-small, .bili-cover-card, .vui_video_card, .bili-dyn-card-video, .video-pod__item, .list-item';
-const CARD_HOST_SELECTOR = '.upload-video-card, upload-video-card, .bili-video-card, bili-video-card, .feed-card, .video-card, .fav-video-card, .media-card, .small-item, .recommend-video-card, .video-page-card-small, .bili-cover-card, .vui_video_card, .bili-dyn-card-video, .video-pod__item, .list-item';
-const CARD_META_ROW_SELECTOR = '.bili-video-card__info--bottom, .bili-video-card__stats, .video-card__stats, .meta, .bili-video-card__subtitle, [class*="video-card__stats"], [class*="info--bottom"], [class*="info-bottom"], [class*="video-meta"], [class*="subtitle"]';
-const CARD_META_TEXT_SELECTOR = '.time, [class*="date"], [class*="pubdate"], [class*="publish"], [class*="time"], [class*="subtitle"]';
+const CARD_CONTAINER_SELECTOR = '.bili-video-card, .feed-card, .video-card, .fav-video-card, .media-card, .small-item, .recommend-video-card, .video-page-card-small, .vui_video_card, .bili-dyn-card-video, .video-pod__item, .list-item, .items__item';
+const CARD_HOST_SELECTOR = '.upload-video-card, upload-video-card, .bili-video-card, bili-video-card, .feed-card, .video-card, .fav-video-card, .media-card, .small-item, .recommend-video-card, .video-page-card-small, .vui_video_card, .bili-dyn-card-video, .video-pod__item, .list-item, .items__item';
+const CARD_META_ROW_SELECTOR = '.bili-video-card__info--bottom, .bili-video-card__stats, .video-card__stats, .upload-video-card__stats, .meta, .bili-video-card__subtitle, [class*="video-card__stats"], [class*="info--bottom"], [class*="info-bottom"], [class*="video-meta"], [class*="subtitle"]';
+const CARD_META_TEXT_SELECTOR = '.time, .stat, [class*="date"], [class*="pubdate"], [class*="publish"], [class*="time"], [class*="subtitle"]';
 const CARD_TITLE_SELECTOR = '.bili-video-card__info--tit, .bili-video-card__title, .title, [class*="title"], [class*="tit"]';
 const CARD_COVER_SELECTOR = '.bili-video-card__image, .bili-video-card__cover, .video-card__cover, .recommend-video-card__cover, .bili-cover-card__image, .vui_video_card__cover, .cover, .pic, .image, [class*="cover"], [class*="image"], [class*="thumb"], [class*="thumbnail"]';
 const CARD_COVER_MEDIA_SELECTOR = 'img, picture, video, canvas, source';
-const LIST_PAGE_CARD_HOST_SELECTOR = '.watchlater-list .video-card, .watchlater-list-container .video-card, .fav-video-list .small-item, .favlist-main .small-item, .fav-main .small-item, .fav-list .small-item, .fav-video-card, .media-card';
-const LIST_PAGE_CARD_ROW_SELECTOR = '.info__bottom, .bili-video-card__subtitle, .video-card__stats, .fav-video-card__meta, .media-card__meta, .meta';
+const CARD_COVER_ONLY_SELECTOR = '.bili-cover-card, .bili-video-card__image, .bili-video-card__image--wrap, .bili-video-card__cover, .video-card__cover, .recommend-video-card__cover, .cover, .pic, .image, [class*="cover"], [class*="image"], [class*="thumb"], [class*="thumbnail"]';
+const CARD_INFO_CONTAINER_SELECTOR = '.bili-video-card__info--right, .bili-video-card__info, .bili-video-card__details, .upload-video-card__right, .info__top, .info__bottom, [class*="details"]';
+const LIST_PAGE_CARD_HOST_SELECTOR = '.watchlater-list .video-card, .watchlater-list-container .video-card, .fav-video-list .small-item, .favlist-main .small-item, .fav-main .small-item, .fav-list .small-item, .fav-list-main .items__item, .space-favlist .items__item, .fav-video-card, .media-card';
+const LIST_PAGE_CARD_ROW_SELECTOR = '.info__bottom, .bili-video-card__subtitle, .bili-video-card__stats, .video-card__stats, .upload-video-card__stats, .fav-video-card__meta, .media-card__meta, .meta';
 
 const WATCH_PANEL_ID = 'bb-watch-panel';
 const COLLECTION_CONTROLS_CLASS = 'bb-collection-controls';
@@ -59,9 +67,93 @@ const COLLECTION_TITLE_EXPANDED_CLASS = 'title-expanded';
 const COLLECTION_LIST_EXPANDED_CLASS = 'bb-collection-list-expanded';
 const THUMBNAIL_BADGE_CLASS = 'bb-watch-badge';
 const THUMBNAIL_BADGE_HOST_CLASS = 'bb-watch-badge-host';
+const THUMBNAIL_BADGE_HOST_POSITIONED_CLASS = 'bb-watch-badge-host--positioned';
+const THUMBNAIL_BADGE_ORIGINAL_POSITION_DATA = 'bbWatchOriginalPosition';
+const THUMBNAIL_BADGE_BVID_DATA = 'bbWatchBvid';
 const CARD_WATCH_TOGGLE_CLASS = 'bb-watch-card-toggle';
 const CARD_WATCH_TOGGLE_ROW_CLASS = 'bb-watch-card-row';
 const CARD_WATCH_TOGGLE_ROW_GENERATED_CLASS = 'bb-watch-card-row--generated';
+const CARD_WATCH_TOGGLE_ROW_BVID_DATA = 'bbWatchBvid';
+
+// 防护选择器是稳定性关键：这些区域由 B 站自身脚本频繁重排或延迟加载，
+// 插件一旦写入就容易造成顶栏、搜索框、头像、评论区消失等回归。
+const WATCH_PANEL_FORBIDDEN_SELECTOR = [
+  `#${WATCH_PANEL_ID}`,
+  '#bili-header-container',
+  '.bili-header',
+  '.bili-header-m',
+  '.mini-header',
+  '.international-header',
+  '.bili-header__bar',
+  '.header-entry',
+  '.right-entry',
+  '.center-search-container',
+  '#nav-searchform',
+  '[role="navigation"]',
+  '[class*="top_right_bar"]',
+  '[class*="history"]',
+  '[class*="v-popover"]',
+  WATCH_PANEL_PLAYER_BOUNDARY_SELECTOR,
+  '#comment',
+  '.comment-container',
+  '[class*="popover"]',
+  '[class*="dropdown"]',
+  '[class*="tooltip"]',
+  '[class*="dialog"]'
+].join(', ');
+const WATCH_CARD_FORBIDDEN_SELECTOR = [
+  `#${WATCH_PANEL_ID}`,
+  WATCH_PANEL_PLAYER_BOUNDARY_SELECTOR,
+  '#viewbox_report',
+  '.video-info-container',
+  '.video-info',
+  '.left-container',
+  '.playlist-container--left',
+  '#comment',
+  '.comment-container'
+].join(', ');
+const PLAY_PAGE_CARD_FORBIDDEN_SELECTOR = [
+  '#bili-header-container',
+  '.bili-header',
+  '.bili-header-m',
+  '.mini-header',
+  '.international-header',
+  '.bili-header__bar',
+  '.header-entry',
+  '.right-entry',
+  '.center-search-container',
+  '#nav-searchform',
+  '[role="navigation"]',
+  '[class*="top_right_bar"]',
+  '[class*="history"]',
+  '[class*="v-popover"]',
+  '[class*="popover"]',
+  '[class*="dropdown"]',
+  '[class*="tooltip"]',
+  '[class*="dialog"]'
+].join(', ');
+const PLAY_PAGE_CARD_SCAN_ROOT_SELECTOR = [
+  '.right-container',
+  '.recommend-list',
+  '.recommend-list-v1',
+  '.recommend-video-card',
+  '.video-page-card-small',
+  '.video-pod__body',
+  '.video-pod__item',
+  '.base-video-sections-v1',
+  '.video-sections-content-list',
+  '.playlist-container--right',
+  '.bili-video-card',
+  'bili-video-card',
+  '.vui_video_card'
+].join(', ');
+const DYNAMIC_CARD_OVERLAY_SELECTOR = [
+  '[class*="top_right_bar"]',
+  '[class*="history"]',
+  '[class*="v-popover"]',
+  '[class*="popover"]',
+  '[class*="dropdown"]'
+].join(', ');
 // 播放页状态面板布局参数：调整前请覆盖短/长标题与短/长元信息四类页面。
 const WATCH_PANEL_INLINE_FALLBACK_WIDTH = 388;
 const WATCH_PANEL_INLINE_GAP = 24;
@@ -75,6 +167,7 @@ const BADGE_HOST_MIN_HEIGHT = 54;
 const BADGE_HOST_MAX_MEDIA_AREA_RATIO = 3.2;
 const COMPACT_BADGE_MAX_WIDTH = 180;
 const COMPACT_BADGE_MAX_HEIGHT = 105;
+const CARD_HOST_MAX_ANCESTOR_DEPTH = 12;
 
 const AUTO_SAVE_PROGRESS_STEP = 5;
 const AUTO_SAVE_INTERVAL_MS = 15000;
@@ -83,7 +176,9 @@ const BOOTSTRAP_REFRESH_MAX_ATTEMPTS = 16;
 const ROUTE_WATCH_INTERVAL_MS = 600;
 const DYNAMIC_CARD_HOVER_REFRESH_INTERVAL_MS = 500;
 const DYNAMIC_CARD_REFRESH_DELAYS_MS = [80, 220, 520];
+const CARD_PREVIEW_RESTORE_REFRESH_DELAYS_MS = [120, 360, 900, 1600];
 
+// 内容脚本的运行态都集中在这里，便于路由变化、弹窗广播和动态列表刷新时统一重置。
 const state = {
   settings: { ...DEFAULT_SETTINGS },
   lastUrl: location.href,
@@ -91,6 +186,7 @@ const state = {
   routeTimer: null,
   dynamicCardObserver: null,
   lastDynamicCardHoverRefreshAt: 0,
+  cardPreviewRestoreHosts: new WeakSet(),
   bootstrapTimer: null,
   bootstrapStartTimer: null,
   bootstrapAttempts: 0,
@@ -137,6 +233,10 @@ function isVideoPage() {
 
 function isSpacePage() {
   return location.hostname === 'space.bilibili.com';
+}
+
+function isSpaceHomePage() {
+  return location.hostname === 'space.bilibili.com' && /^\/\d+\/?$/.test(location.pathname);
 }
 
 function isSearchPage() {
@@ -254,6 +354,8 @@ async function loadSettings() {
   }
 }
 
+// recordCache 是页面级缓存：同一个搜索页可能有大量重复 BV，批量读取后复用，
+// 避免每次鼠标悬停或 DOM 变化都向后台发一堆 IndexedDB 查询。
 function updateCachedRecord(bvid, record) {
   updateCachedRecords({
     [bvid]: record || null
@@ -307,6 +409,7 @@ async function ensureCachedWatchRecords(bvids) {
   }
 }
 
+// B 站单页应用不会完整刷新页面，URL/BVID 变化时必须主动同步当前视频上下文。
 async function syncCurrentVideoContext() {
   const nextBvid = getCurrentVideoBvid();
   const nextTitle = getCurrentVideoTitle();
@@ -455,6 +558,8 @@ function formatWatchTime(seconds) {
     : `${paddedMinutes}:${paddedSeconds}`;
 }
 
+// “跳到进度”按钮只跳到真实播放位置，不用百分比反推；
+// 这样长视频、分 P、进度恢复都不会因为时长变化出现大偏差。
 function getWatchProgressJumpState(record = state.watch.currentRecord) {
   const player = state.watch.player || getCurrentVideoElement();
   const seekPosition = getRecordSeekPosition(record);
@@ -564,11 +669,7 @@ function isStableWatchTitleElement(element) {
     return false;
   }
 
-  if (element.closest(`#${WATCH_PANEL_ID}`)) {
-    return false;
-  }
-
-  if (element.closest('[class*="popover"], [class*="tooltip"], [class*="dropdown"], [class*="dialog"]')) {
+  if (isWatchPanelForbiddenElement(element)) {
     return false;
   }
 
@@ -585,16 +686,13 @@ function isVisibleWatchElement(element) {
   return rect.width > 0 && rect.height > 0;
 }
 
+// 元信息候选必须在标题附近且可见，避免把顶栏历史浮层、评论区或播放器内文案当作挂载点。
 function isWatchPanelMetaCandidate(element, titleElement) {
   if (!(element instanceof HTMLElement) || !isVisibleWatchElement(element)) {
     return false;
   }
 
-  if (element.closest(`#${WATCH_PANEL_ID}`)) {
-    return false;
-  }
-
-  if (element.closest('[class*="popover"], [class*="tooltip"], [class*="dropdown"], [class*="dialog"]')) {
+  if (isWatchPanelForbiddenElement(element)) {
     return false;
   }
 
@@ -702,6 +800,8 @@ function findWatchPanelTitleElement() {
     .find((titleElement) => isStableWatchTitleElement(titleElement)) || null;
 }
 
+// 播放页存在普通视频、合集、分 P、收藏播放、稍后再看播放等多种 DOM 结构。
+// 查找顺序先走稳定容器，再走兜底选择器，最后由 isSafeWatchPanelContext 做安全收口。
 function findWatchPanelContext() {
   const stableContainerSelectors = [
     '#viewbox_report',
@@ -761,6 +861,22 @@ function findWatchPanelContext() {
   }
 
   return null;
+}
+
+function isSafeWatchPanelContext(context) {
+  if (!context || !(context.containerElement instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (!(context.titleElement instanceof HTMLElement)) {
+    return false;
+  }
+
+  return ![
+    context.containerElement,
+    context.titleElement,
+    context.metaElement
+  ].some((element) => element instanceof HTMLElement && isWatchPanelForbiddenElement(element));
 }
 
 function getDocumentVideoTitle() {
@@ -845,6 +961,7 @@ function measureWatchPanelTextWidth(element) {
   }
 }
 
+// 用克隆节点测量真实面板尺寸，避免新增/减少按钮后仍按旧固定宽度判断摆放位置。
 function getWatchPanelMeasuredSize(panel) {
   if (!(panel instanceof HTMLElement)) {
     return {
@@ -997,6 +1114,8 @@ function getWatchPanelPlayerBoundaryRect() {
   return getVisibleElementRect(playerBoundaryElement) || getVisibleElementRect(playerElement);
 }
 
+// 面板右侧可用空间以播放器边界、左列容器和当前容器共同约束，
+// 防止按钮一半跑进播放器，或压到右侧推荐栏。
 function getWatchPanelInlineRightLimit(context, element, panelSize) {
   const elementRect = element.getBoundingClientRect();
   const viewportRight = Math.max(0, window.innerWidth - WATCH_PANEL_INLINE_EDGE_PADDING);
@@ -1070,6 +1189,7 @@ function debugWatchPanelPlacement(mode, detail = {}) {
 }
 
 // 布局规则：优先贴到元信息行右侧；元信息太长时回退标题行；都放不下才另起一行。
+// 注意：inline 模式挂到 document.body 绝对定位，不进入 B 站原生排版流，避免挤压标题/元信息。
 function getWatchPanelPlacement(panel, context) {
   const panelSize = getWatchPanelMeasuredSize(panel);
 
@@ -1148,6 +1268,8 @@ function placeWatchPanel(panel, context) {
   }
 }
 
+// 播放页面板只在安全上下文存在时创建；上下文不安全时宁可移除，
+// 也不要把按钮挂进顶栏、播放器或浮层里。
 function ensureWatchPanel() {
   if (!state.settings.watchMarkerEnabled || !isVideoPage() || !state.watch.currentBvid) {
     removeWatchPanel();
@@ -1156,7 +1278,8 @@ function ensureWatchPanel() {
 
   const panelContext = findWatchPanelContext();
 
-  if (!panelContext || !panelContext.containerElement) {
+  if (!isSafeWatchPanelContext(panelContext)) {
+    removeWatchPanel();
     return;
   }
 
@@ -1249,6 +1372,8 @@ function attachVideoListeners() {
   player.addEventListener('seeked', handleVideoSeeked);
 }
 
+// 自动保存按“进度跨度”和“时间间隔”双条件节流；完成阈值或 ended 事件会强制同步。
+// saveInFlight 用来串行化写入，避免连续 timeupdate 造成进度倒退或重复写库。
 async function persistWatchProgress(forceComplete = false, forceSync = false) {
   if (!state.settings.watchMarkerEnabled || !state.watch.currentBvid) {
     return;
@@ -1385,6 +1510,112 @@ function isElementVisibleForWatchMarker(element) {
   return true;
 }
 
+function isInsideSelector(element, selector) {
+  return element instanceof Element && Boolean(selector) && Boolean(element.closest(selector));
+}
+
+function isWatchPanelForbiddenElement(element) {
+  return isInsideSelector(element, WATCH_PANEL_FORBIDDEN_SELECTOR);
+}
+
+function isWatchCardForbiddenElement(element) {
+  if (!(element instanceof Element)) {
+    return true;
+  }
+
+  if (isInsideSelector(element, `#${WATCH_PANEL_ID}`)) {
+    return true;
+  }
+
+  if (!isVideoPage()) {
+    return false;
+  }
+
+  return (
+    isInsideSelector(element, WATCH_CARD_FORBIDDEN_SELECTOR) ||
+    isInsideSelector(element, PLAY_PAGE_CARD_FORBIDDEN_SELECTOR)
+  );
+}
+
+// 播放页只扫描右侧推荐、合集列表等明确区域；普通列表页才允许从 document 扫描。
+// 这是防止卡片标签误伤顶栏历史/收藏浮层和播放页主信息区域的关键边界。
+function getWatchCardScanRoots() {
+  if (!isVideoPage()) {
+    return [document];
+  }
+
+  return Array.from(document.querySelectorAll(PLAY_PAGE_CARD_SCAN_ROOT_SELECTOR))
+    .filter((rootElement) => rootElement instanceof HTMLElement)
+    .filter((rootElement) => !isWatchCardForbiddenElement(rootElement))
+    .filter(isElementVisibleForWatchMarker);
+}
+
+function isAnchorInWatchCardScanRoot(anchorElement, scanRoots) {
+  if (!(anchorElement instanceof HTMLElement)) {
+    return false;
+  }
+
+  return scanRoots.some((rootElement) => (
+    rootElement === document ||
+    rootElement === anchorElement ||
+    rootElement.contains(anchorElement)
+  ));
+}
+
+function isSafeWatchCardTarget(anchorElement, cardHostElement, badgeHostElement) {
+  if (
+    !(anchorElement instanceof HTMLElement) ||
+    !(cardHostElement instanceof HTMLElement) ||
+    !(badgeHostElement instanceof HTMLElement)
+  ) {
+    return false;
+  }
+
+  if (
+    isWatchCardForbiddenElement(anchorElement) ||
+    isWatchCardForbiddenElement(cardHostElement) ||
+    isWatchCardForbiddenElement(badgeHostElement)
+  ) {
+    return false;
+  }
+
+  if (!cardHostElement.contains(anchorElement) || !cardHostElement.contains(badgeHostElement)) {
+    return false;
+  }
+
+  if (cardHostElement === document.body || badgeHostElement === document.body) {
+    return false;
+  }
+
+  return true;
+}
+
+function getClosestVideoCardElement(element) {
+  if (!(element instanceof Element)) {
+    return null;
+  }
+
+  return element.closest(`${CARD_HOST_SELECTOR}, ${CARD_CONTAINER_SELECTOR}, ${VIDEO_LINK_SELECTOR}`);
+}
+
+function isSpaceFeaturedCardElement(element) {
+  if (!isSpaceHomePage()) {
+    return false;
+  }
+
+  const cardElement = getClosestVideoCardElement(element);
+
+  if (!(cardElement instanceof HTMLElement)) {
+    return false;
+  }
+
+  const coverElement = resolveBadgeHost(cardElement, cardElement);
+  const coverRect = getVisibleElementRect(coverElement);
+
+  return Boolean(coverRect && coverRect.width >= 360 && coverRect.height >= 180);
+}
+
+// 卡片结构在不同页面差异很大：先找封面链接，再从封面附近挑一个尺寸合适的宿主。
 function resolveBadgeHost(anchorElement, cardHostElement = resolveCardHost(anchorElement)) {
   if (cardHostElement) {
     const coverLink = Array.from(cardHostElement.querySelectorAll(VIDEO_LINK_SELECTOR)).find((linkElement) => {
@@ -1413,12 +1644,92 @@ function resolveCardHost(anchorElement) {
   if (isListCardPage()) {
     const listPageCardHost = anchorElement.closest(LIST_PAGE_CARD_HOST_SELECTOR);
 
-    if (listPageCardHost) {
+    if (listPageCardHost && !isWatchCardForbiddenElement(listPageCardHost)) {
       return listPageCardHost;
     }
   }
 
-  return anchorElement.closest(CARD_HOST_SELECTOR) || anchorElement.closest(CARD_CONTAINER_SELECTOR) || anchorElement;
+  const cardHostCandidate = pickCardHostCandidate(anchorElement);
+
+  if (cardHostCandidate && !isWatchCardForbiddenElement(cardHostCandidate)) {
+    return cardHostCandidate;
+  }
+
+  return isWatchCardForbiddenElement(anchorElement) ? null : anchorElement;
+}
+
+function pickCardHostCandidate(anchorElement) {
+  if (!(anchorElement instanceof HTMLElement)) {
+    return null;
+  }
+
+  const candidates = [];
+  let currentElement = anchorElement;
+  let depth = 0;
+
+  while (currentElement instanceof HTMLElement && depth < CARD_HOST_MAX_ANCESTOR_DEPTH) {
+    if (currentElement.matches(CARD_HOST_SELECTOR) || currentElement.matches(CARD_CONTAINER_SELECTOR)) {
+      candidates.push(currentElement);
+    }
+
+    currentElement = currentElement.parentElement;
+    depth += 1;
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  return candidates.reduce((bestElement, currentCandidate) => (
+    getCardHostScore(currentCandidate) > getCardHostScore(bestElement)
+      ? currentCandidate
+      : bestElement
+  ));
+}
+
+// 候选卡片评分偏向“有标题、有元信息、有封面”的祖先节点，同时惩罚纯封面节点。
+// 这样第三列搜索结果、个人主页投稿、收藏列表等结构都能落到完整卡片上。
+function getCardHostScore(candidateElement) {
+  if (!(candidateElement instanceof HTMLElement)) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const classText = typeof candidateElement.className === 'string'
+    ? candidateElement.className.toLowerCase()
+    : '';
+  const hasTitle = Boolean(candidateElement.querySelector(CARD_TITLE_SELECTOR));
+  const hasMetaRow = Boolean(candidateElement.querySelector(CARD_META_ROW_SELECTOR));
+  const hasInfoContainer = Boolean(candidateElement.querySelector(CARD_INFO_CONTAINER_SELECTOR));
+  const hasCover = Boolean(candidateElement.querySelector(CARD_COVER_MEDIA_SELECTOR));
+  const videoLinkCount = candidateElement.querySelectorAll(VIDEO_LINK_SELECTOR).length;
+  let score = 0;
+
+  if (hasTitle) {
+    score += 120;
+  }
+
+  if (hasMetaRow) {
+    score += 100;
+  }
+
+  if (hasInfoContainer) {
+    score += 80;
+  }
+
+  if (hasCover) {
+    score += 40;
+  }
+
+  if (/(^|\s)(bili-video-card|upload-video-card|video-card|small-item|items__item)(\s|$)/.test(classText)) {
+    score += 80;
+  }
+
+  if (/(cover|image|pic|thumb|thumbnail)/.test(classText)) {
+    score -= 160;
+  }
+
+  score -= Math.max(0, videoLinkCount - 2) * 20;
+  return score;
 }
 
 function findBadgeCoverHost(rootElement, cardHostElement) {
@@ -1444,7 +1755,7 @@ function findBadgeCoverHost(rootElement, cardHostElement) {
   };
 
   collectCandidate(rootElement);
-  Array.from(rootElement.querySelectorAll(CARD_COVER_SELECTOR)).forEach(collectCandidate);
+  Array.from(rootElement.querySelectorAll(CARD_COVER_ONLY_SELECTOR)).forEach(collectCandidate);
 
   if (mediaElement instanceof HTMLElement) {
     let ancestorElement = mediaElement.parentElement;
@@ -1511,6 +1822,7 @@ function getBadgeHostScore(candidateElement) {
   return score;
 }
 
+// 缩略图标签宿主必须接近封面大小；过大的祖先会导致标签飘到别的视频或页面左上角。
 function isValidBadgeHost(candidateElement, cardHostElement) {
   if (!isElementVisibleForWatchMarker(candidateElement)) {
     return false;
@@ -1558,13 +1870,26 @@ function isValidBadgeHost(candidateElement, cardHostElement) {
 }
 
 function collectWatchCardTargets() {
-  const anchors = Array.from(document.querySelectorAll(VIDEO_LINK_SELECTOR));
+  const scanRoots = getWatchCardScanRoots();
+  const anchors = Array.from(new Set(scanRoots.flatMap((rootElement) => (
+    rootElement === document
+      ? Array.from(document.querySelectorAll(VIDEO_LINK_SELECTOR))
+      : Array.from(rootElement.querySelectorAll(VIDEO_LINK_SELECTOR))
+  ))));
   const seenCardHosts = new Set();
   const seenBadgeHosts = new Set();
   const targets = [];
 
+  if (scanRoots.length === 0) {
+    return targets;
+  }
+
   anchors.forEach((anchorElement) => {
-    if (!isElementVisibleForWatchMarker(anchorElement)) {
+    if (
+      !isElementVisibleForWatchMarker(anchorElement) ||
+      !isAnchorInWatchCardScanRoot(anchorElement, scanRoots) ||
+      isWatchCardForbiddenElement(anchorElement)
+    ) {
       return;
     }
 
@@ -1575,9 +1900,18 @@ function collectWatchCardTargets() {
     }
 
     const cardHostElement = resolveCardHost(anchorElement);
+
+    if (!cardHostElement) {
+      return;
+    }
+
     const badgeHostElement = resolveBadgeHost(anchorElement, cardHostElement);
 
     if (!badgeHostElement) {
+      return;
+    }
+
+    if (!isSafeWatchCardTarget(anchorElement, cardHostElement, badgeHostElement)) {
       return;
     }
 
@@ -1591,6 +1925,9 @@ function collectWatchCardTargets() {
 
     seenCardHosts.add(cardHostElement);
     seenBadgeHosts.add(badgeHostElement);
+    bindCardPreviewRestore(anchorElement);
+    bindCardPreviewRestore(cardHostElement);
+    bindCardPreviewRestore(badgeHostElement);
     targets.push({
       anchorElement,
       badgeHostElement,
@@ -1608,6 +1945,13 @@ function removeThumbnailBadge(hostElement) {
     badge.remove();
   });
 
+  if (hostElement.classList.contains(THUMBNAIL_BADGE_HOST_POSITIONED_CLASS)) {
+    hostElement.style.position = hostElement.dataset[THUMBNAIL_BADGE_ORIGINAL_POSITION_DATA] || '';
+    delete hostElement.dataset[THUMBNAIL_BADGE_ORIGINAL_POSITION_DATA];
+    hostElement.classList.remove(THUMBNAIL_BADGE_HOST_POSITIONED_CLASS);
+  }
+
+  delete hostElement.dataset[THUMBNAIL_BADGE_BVID_DATA];
   hostElement.classList.remove(THUMBNAIL_BADGE_HOST_CLASS);
 }
 
@@ -1615,6 +1959,73 @@ function clearAllThumbnailBadges() {
   document.querySelectorAll(`.${THUMBNAIL_BADGE_HOST_CLASS}`).forEach((hostElement) => {
     removeThumbnailBadge(hostElement);
   });
+}
+
+function getVideoBvidsInElement(element) {
+  if (!(element instanceof Element)) {
+    return [];
+  }
+
+  const linkElements = [
+    ...(element.matches(VIDEO_LINK_SELECTOR) ? [element] : []),
+    ...Array.from(element.querySelectorAll(VIDEO_LINK_SELECTOR))
+  ];
+
+  return Array.from(new Set(linkElements.map((linkElement) => (
+    linkElement instanceof HTMLAnchorElement ? parseBvidFromUrl(linkElement.href) : ''
+  )).filter(Boolean)));
+}
+
+function scheduleCardPreviewRestoreRefreshBurst() {
+  CARD_PREVIEW_RESTORE_REFRESH_DELAYS_MS.forEach((delay) => {
+    window.setTimeout(() => {
+      scheduleRefresh(0);
+    }, delay);
+  });
+}
+
+function handleCardPreviewRestore() {
+  if (!state.settings.watchMarkerEnabled || isVideoPage()) {
+    return;
+  }
+
+  scheduleCardPreviewRestoreRefreshBurst();
+}
+
+function bindCardPreviewRestore(element) {
+  if (!(element instanceof HTMLElement) || state.cardPreviewRestoreHosts.has(element)) {
+    return;
+  }
+
+  state.cardPreviewRestoreHosts.add(element);
+  element.addEventListener('mouseleave', handleCardPreviewRestore);
+}
+
+function shouldRemoveStaleThumbnailBadge(hostElement, activeHosts) {
+  if (activeHosts.has(hostElement)) {
+    return false;
+  }
+
+  if (!(hostElement instanceof HTMLElement) || !hostElement.isConnected) {
+    return true;
+  }
+
+  if (isWatchCardForbiddenElement(hostElement)) {
+    return true;
+  }
+
+  const bvid = normalizeBvid(hostElement.dataset[THUMBNAIL_BADGE_BVID_DATA]);
+
+  if (!bvid) {
+    return true;
+  }
+
+  const cardElement = getClosestVideoCardElement(hostElement) || hostElement;
+  const cardBvids = getVideoBvidsInElement(cardElement);
+
+  // B 站封面预览会短暂替换/隐藏卡片内部链接。此时不要把旧标签删掉，
+  // 只在卡片已经明确指向其他视频时才清理。
+  return cardBvids.length > 0 && !cardBvids.includes(bvid);
 }
 
 function getCardVideoTitle(hostElement, anchorElement) {
@@ -1670,6 +2081,31 @@ function createCardMetaRowWrapper(metaElement) {
   return wrapper;
 }
 
+function createFallbackCardWatchToggleRow(hostElement) {
+  if (!(hostElement instanceof HTMLElement)) {
+    return null;
+  }
+
+  if (isVideoPage() || isWatchCardForbiddenElement(hostElement)) {
+    return null;
+  }
+
+  const infoContainer = hostElement.querySelector(CARD_INFO_CONTAINER_SELECTOR);
+  const titleElement = hostElement.querySelector(CARD_TITLE_SELECTOR);
+  const mountElement = infoContainer || (titleElement && titleElement.parentElement) || hostElement;
+
+  if (!(mountElement instanceof HTMLElement) || isWatchCardForbiddenElement(mountElement)) {
+    return null;
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.className = `${CARD_WATCH_TOGGLE_ROW_CLASS} ${CARD_WATCH_TOGGLE_ROW_GENERATED_CLASS}`;
+  mountElement.appendChild(wrapper);
+  return wrapper;
+}
+
+// 勾选框优先放到页面已有的底部信息行，只有找不到元信息行时才创建兜底行。
+// 不在播放页主信息区创建兜底行，避免影响播放器上方布局。
 function findCardWatchToggleRow(hostElement) {
   if (!hostElement) {
     return null;
@@ -1729,7 +2165,7 @@ function findCardWatchToggleRow(hostElement) {
     return createCardMetaRowWrapper(metaElement);
   }
 
-  return null;
+  return createFallbackCardWatchToggleRow(hostElement);
 }
 
 function removeCardWatchToggle(rowElement) {
@@ -1742,6 +2178,7 @@ function removeCardWatchToggle(rowElement) {
   });
 
   rowElement.classList.remove(CARD_WATCH_TOGGLE_ROW_CLASS);
+  delete rowElement.dataset[CARD_WATCH_TOGGLE_ROW_BVID_DATA];
 
   if (!rowElement.classList.contains(CARD_WATCH_TOGGLE_ROW_GENERATED_CLASS)) {
     return;
@@ -1767,6 +2204,32 @@ function clearAllCardWatchToggles() {
   });
 }
 
+function shouldRemoveStaleCardWatchToggle(rowElement, activeRows) {
+  if (activeRows.has(rowElement)) {
+    return false;
+  }
+
+  if (!(rowElement instanceof HTMLElement) || !rowElement.isConnected) {
+    return true;
+  }
+
+  if (isWatchCardForbiddenElement(rowElement) || isSpaceFeaturedCardElement(rowElement)) {
+    return true;
+  }
+
+  const bvid = normalizeBvid(rowElement.dataset[CARD_WATCH_TOGGLE_ROW_BVID_DATA]);
+
+  if (!bvid) {
+    return true;
+  }
+
+  const cardElement = getClosestVideoCardElement(rowElement) || rowElement;
+  const cardBvids = getVideoBvidsInElement(cardElement);
+
+  // 封面预览过程中卡片内部链接可能短暂消失，不能因此清掉仍属于同一视频的勾选框。
+  return cardBvids.length > 0 && !cardBvids.includes(bvid);
+}
+
 function renderCardWatchToggleState(toggleButton, record) {
   const status = formatWatchStatus(record);
   const isComplete = status.status === 'complete';
@@ -1783,6 +2246,23 @@ function renderCardWatchToggleState(toggleButton, record) {
   toggleButton.setAttribute('aria-pressed', isComplete ? 'true' : 'false');
 }
 
+function isSpaceFeaturedVideoTarget(target) {
+  if (!target || !isSpaceHomePage()) {
+    return false;
+  }
+
+  const badgeRect = getVisibleElementRect(target.badgeHostElement);
+
+  if (!badgeRect) {
+    return false;
+  }
+
+  // UP 主主页顶部展示视频是大横向介绍卡，长期固定展示，快捷勾选框收益低且容易生成突兀灰条。
+  return badgeRect.width >= 360 && badgeRect.height >= 180;
+}
+
+// 卡片上的小方块是“快速切换看完状态”：已看完时点击恢复之前进度，
+// 未看完或未记录时点击标记为已看完。
 async function handleCardWatchToggleClick(event) {
   event.preventDefault();
   event.stopPropagation();
@@ -1844,6 +2324,7 @@ function renderCardWatchToggle(rowElement, target, record) {
 
   toggleButton.dataset.bvid = target.bvid;
   toggleButton.dataset.title = target.title || '';
+  rowElement.dataset[CARD_WATCH_TOGGLE_ROW_BVID_DATA] = target.bvid;
   toggleButton.disabled = toggleButton.dataset.loading === 'true';
   renderCardWatchToggleState(toggleButton, record);
 }
@@ -1860,6 +2341,7 @@ function shouldUseCompactThumbnailBadge(hostElement) {
   );
 }
 
+// 小封面上的完整“已看完”会挡画面，因此紧凑模式显示“看完”或纯百分比。
 function formatThumbnailBadgeText(status, compact) {
   if (status.status === 'complete') {
     return compact ? '看完' : status.text;
@@ -1872,7 +2354,12 @@ function formatThumbnailBadgeText(status, compact) {
   return status.text;
 }
 
-function renderThumbnailBadge(hostElement, record) {
+function renderThumbnailBadge(hostElement, record, bvid) {
+  if (isWatchCardForbiddenElement(hostElement)) {
+    removeThumbnailBadge(hostElement);
+    return;
+  }
+
   const status = formatWatchStatus(record);
 
   if (status.status === 'empty') {
@@ -1894,6 +2381,14 @@ function renderThumbnailBadge(hostElement, record) {
   }
 
   hostElement.classList.add(THUMBNAIL_BADGE_HOST_CLASS);
+  hostElement.dataset[THUMBNAIL_BADGE_BVID_DATA] = normalizeBvid(bvid);
+
+  if (window.getComputedStyle(hostElement).position === 'static') {
+    hostElement.dataset[THUMBNAIL_BADGE_ORIGINAL_POSITION_DATA] = hostElement.style.position || '';
+    hostElement.style.position = 'relative';
+    hostElement.classList.add(THUMBNAIL_BADGE_HOST_POSITIONED_CLASS);
+  }
+
   const compact = shouldUseCompactThumbnailBadge(hostElement);
   badge.textContent = formatThumbnailBadgeText(status, compact);
   badge.dataset.status = status.status;
@@ -1901,6 +2396,7 @@ function renderThumbnailBadge(hostElement, record) {
   badge.title = status.text;
 }
 
+// 渲染时保留本轮仍有效的行，清理失效行，避免 SPA 返回搜索页后出现重复勾选框。
 function renderCardWatchToggles(targets) {
   if (!state.settings.watchMarkerEnabled || !supportsCardWatchToggle()) {
     clearAllCardWatchToggles();
@@ -1910,6 +2406,10 @@ function renderCardWatchToggles(targets) {
   const activeRows = new Set();
 
   targets.forEach((target) => {
+    if (isSpaceFeaturedVideoTarget(target)) {
+      return;
+    }
+
     const rowElement = findCardWatchToggleRow(target.cardHostElement);
 
     if (!rowElement || activeRows.has(rowElement)) {
@@ -1921,7 +2421,7 @@ function renderCardWatchToggles(targets) {
   });
 
   document.querySelectorAll(`.${CARD_WATCH_TOGGLE_ROW_CLASS}`).forEach((rowElement) => {
-    if (!activeRows.has(rowElement)) {
+    if (shouldRemoveStaleCardWatchToggle(rowElement, activeRows)) {
       removeCardWatchToggle(rowElement);
     }
   });
@@ -1937,8 +2437,12 @@ async function renderThumbnailBadges() {
   const badgeTargets = collectWatchCardTargets();
 
   if (badgeTargets.length === 0) {
-    clearAllThumbnailBadges();
-    clearAllCardWatchToggles();
+    document.querySelectorAll(`.${THUMBNAIL_BADGE_HOST_CLASS}`).forEach((hostElement) => {
+      if (shouldRemoveStaleThumbnailBadge(hostElement, new Set())) {
+        removeThumbnailBadge(hostElement);
+      }
+    });
+    renderCardWatchToggles([]);
     return;
   }
 
@@ -1948,11 +2452,11 @@ async function renderThumbnailBadges() {
   const activeHosts = new Set(badgeTargets.map((target) => target.badgeHostElement));
 
   badgeTargets.forEach((target) => {
-    renderThumbnailBadge(target.badgeHostElement, state.watch.recordCache.get(target.bvid) || null);
+    renderThumbnailBadge(target.badgeHostElement, state.watch.recordCache.get(target.bvid) || null, target.bvid);
   });
 
   document.querySelectorAll(`.${THUMBNAIL_BADGE_HOST_CLASS}`).forEach((hostElement) => {
-    if (!activeHosts.has(hostElement)) {
+    if (shouldRemoveStaleThumbnailBadge(hostElement, activeHosts)) {
       removeThumbnailBadge(hostElement);
     }
   });
@@ -1978,6 +2482,7 @@ async function applyWatchFeatures() {
   await renderThumbnailBadges();
 }
 
+// 所有功能刷新统一从这里进入，串行执行并合并重复请求，避免 MutationObserver 触发刷新风暴。
 async function refreshPageFeatures() {
   if (document.readyState !== 'complete') {
     return;
@@ -2080,13 +2585,20 @@ function nodeHasVideoCardContent(node) {
     return false;
   }
 
-  if (node.id === WATCH_PANEL_ID || node.classList.contains(THUMBNAIL_BADGE_CLASS)) {
+  if (
+    node.id === WATCH_PANEL_ID ||
+    node.classList.contains(THUMBNAIL_BADGE_CLASS) ||
+    isWatchCardForbiddenElement(node)
+  ) {
     return false;
   }
 
   return node.matches(VIDEO_LINK_SELECTOR) || Boolean(node.querySelector(VIDEO_LINK_SELECTOR));
 }
 
+// 只监听节点增删，不监听 attributes。
+// 之前监听全页面 class/style/hidden/aria-hidden 会被 B 站播放页频繁触发，
+// 最终造成顶栏、搜索框、头像、评论区加载被插件刷新节奏干扰。
 function startDynamicCardObserver() {
   if (state.dynamicCardObserver || !document.body) {
     return;
@@ -2105,8 +2617,6 @@ function startDynamicCardObserver() {
   });
 
   state.dynamicCardObserver.observe(document.body, {
-    attributes: true,
-    attributeFilter: ['aria-hidden', 'class', 'hidden', 'style'],
     childList: true,
     subtree: true
   });
@@ -2120,16 +2630,30 @@ function scheduleDynamicCardRefreshBurst() {
   });
 }
 
+function isDynamicCardOverlayElement(element) {
+  return element instanceof Element && Boolean(element.closest(DYNAMIC_CARD_OVERLAY_SELECTOR));
+}
+
 function handleDynamicCardPointerOver(event) {
   if (!state.settings.watchMarkerEnabled) {
     return;
   }
 
-  if (!(event.target instanceof Element) || event.target.closest(`#${WATCH_PANEL_ID}`)) {
+  if (
+    !(event.target instanceof Element) ||
+    event.target.closest(`#${WATCH_PANEL_ID}`) ||
+    isWatchCardForbiddenElement(event.target)
+  ) {
     return;
   }
 
-  if (event.clientY > 160 && !event.target.closest(VIDEO_LINK_SELECTOR)) {
+  const isOverlay = isDynamicCardOverlayElement(event.target);
+
+  if (!isOverlay && event.target.closest(VIDEO_LINK_SELECTOR)) {
+    return;
+  }
+
+  if (!isOverlay && event.clientY > 160) {
     return;
   }
 
